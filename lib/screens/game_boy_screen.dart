@@ -21,7 +21,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   late AnimationController _ledAnimationController;
   late Animation<double> _ledAnimation;
 
-  Color _mickeyImageColor = Colors.black; // Initial color
+  Color _mickeyImageColor = Colors.black12; // Initial color
   final List<Color> _randomColors = [Colors.red, Colors.orange, TetrisGameScreenState.lcdBackground, Colors.green, Colors.blue, Colors.indigo, Colors.purple];
   Timer? _mickeyColorTimer;
   int _currentColorIndex = 0;
