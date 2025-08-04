@@ -1,15 +1,34 @@
-import 'package:bricks/game/game_state.dart';
-import 'package:bricks/screens/tetris_game_screen.dart';
+// import 'package:bricks/screens/bricks_game_content.dart';
 import 'package:bricks/widgets/arrow_painter.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math'; // Added for Random
 import 'package:audioplayers/audioplayers.dart';
-import 'package:provider/provider.dart';
+import 'package:bricks/style/app_style.dart';
 
+typedef GameButtonCallback = void Function()?;
 
 class GameBoyScreen extends StatefulWidget {
-  const GameBoyScreen({super.key});
+  final Widget gameContent;
+  final Map<String, GameButtonCallback?> onButtonPressed;
+
+  static const String btnUp = 'up';
+  static const String btnDown = 'down';
+  static const String btnLeft = 'left';
+  static const String btnRight = 'right';
+  static const String btnDrop = 'drop';
+  static const String btnRotate = 'rotate';
+  static const String btnSound = 'sound';
+  static const String btnPause = 'pause';
+  static const String btnStart = 'start';
+  static const String btnSettings = 'settings';
+
+  const GameBoyScreen({
+    super.key,
+    required this.gameContent,
+    required this.onButtonPressed,
+  });
+
   @override
   GameBoyScreenState createState() => GameBoyScreenState();
 }
@@ -22,9 +41,8 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   late Animation<double> _ledAnimation;
 
   Color _mickeyImageColor = Colors.black12; // Initial color
-  final List<Color> _randomColors = [Colors.red, Colors.orange, TetrisGameScreenState.lcdBackground, Colors.green, Colors.blue, Colors.indigo, Colors.purple];
+  final List<Color> _randomColors = [Colors.red, Colors.orange, LcdColors.background, Colors.green, Colors.blue, Colors.indigo, Colors.purple];
   Timer? _mickeyColorTimer;
-  int _currentColorIndex = 0;
   final Random _random = Random();
 
   // Rectangle colors
@@ -32,42 +50,25 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   Timer? _rectangleColorTimer;
   int _currentRectangleColorIndex = 0;
 
-  // Colors for the rectangles next to the Mickey image
-
-  // Noms des boutons pour gérer leur état de pression
-  static const String btnUp = 'up';
-  static const String btnDown = 'down';
-  static const String btnLeft = 'left';
-  static const String btnRight = 'right';
-  static const String btnDrop = 'drop';
-  static const String btnRotate = 'rotate';
-  static const String btnSound = 'sound';
-  static const String btnPause = 'pause';
-  static const String btnStart = 'start';
-  static const String btnSettings = 'settings';
-
   // Map pour suivre quel bouton est actuellement pressé
   final Map<String, bool> _buttonsPressed = {
-    btnUp: false,
-    btnDown: false,
-    btnLeft: false,
-    btnRight: false,
-    btnDrop: false,
-    btnRotate: false,
-    btnSound: false,
-    btnPause: false,
-    btnStart: false,
-    btnSettings: false,
+    GameBoyScreen.btnUp: false,
+    GameBoyScreen.btnDown: false,
+    GameBoyScreen.btnLeft: false,
+    GameBoyScreen.btnRight: false,
+    GameBoyScreen.btnDrop: false,
+    GameBoyScreen.btnRotate: false,
+    GameBoyScreen.btnSound: false,
+    GameBoyScreen.btnPause: false,
+    GameBoyScreen.btnStart: false,
+    GameBoyScreen.btnSettings: false,
   };
 
   @override
   void initState() {
     super.initState();
-    final gameState = Provider.of<GameState>(context, listen: false);
-    _initMusic(gameState);
     _initLedAnimation();
     _startMickeyColorTimer();
-    // Initialize rectangle colors (7 rectangles, default to grey)
   // Couleurs de l'arc-en-ciel
   _rectangleColors = [
     Colors.red,
@@ -79,15 +80,6 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     Colors.purple,
   ];
   
-    // // Start the rectangle color timer
-    // _rectangleColorTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-    //   setState(() {
-    //     _currentRectangleColorIndex = (_currentRectangleColorIndex + 1) % _rectangleColors.length;
-    //     _rectangleColors = List.generate(7, (index) => _rectangleColors[(_currentRectangleColorIndex + index) % _rectangleColors.length]);
-    //   });
-    // });
-
-  // Animation des rectangles
   _rectangleColorTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
     setState(() {
       // Remet toutes les couleurs normales
@@ -119,15 +111,6 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     });
   }
 
-  void _initMusic(GameState gameState) async {
-    await _musicPlayer.setReleaseMode(ReleaseMode.loop);
-    await _musicPlayer.setSource(AssetSource('sounds/8bit-music-for-game-68698.mp3'));
-    await _musicPlayer.setVolume(0.3); // Volume de fond faible
-    if (gameState.playing && gameState.soundOn) {
-      await _musicPlayer.resume();
-    }
-  }
-
   void _initLedAnimation() {
     _ledAnimationController = AnimationController(
       vsync: this,
@@ -136,10 +119,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     _ledAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
       CurvedAnimation(parent: _ledAnimationController, curve: Curves.easeInOut),
     );
-    final gameState = Provider.of<GameState>(context, listen: false);
-    if (!gameState.playing) {
-      _ledAnimationController.repeat(reverse: true);
-    }
+    _ledAnimationController.repeat(reverse: true);
   }
 
   Timer? _continuousMoveTimer;
@@ -157,28 +137,9 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
       }
     });
 
-    final gameState = Provider.of<GameState>(context, listen: false);
-
     // Logique spécifique à chaque bouton
-    switch (buttonName) {
-      case btnSound:
-        _toggleSound(gameState);
-        break;
-      case btnPause:
-        gameState.togglePlaying();
-        break;
-      case btnStart:
-        gameState.startGame();
-        break;
-      case btnRotate:
-        gameState.rotate();
-        break;
-      case btnDrop:
-        gameState.hardDrop();
-        break;
-      case btnSettings:
-        Navigator.pop(context);
-        break;
+    if (widget.onButtonPressed.containsKey(buttonName)) {
+      widget.onButtonPressed[buttonName]?.call();
     }
   }
 
@@ -204,21 +165,6 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     _mickeyColorTimer?.cancel();
     _rectangleColorTimer?.cancel(); // Cancel the new timer
     super.dispose();
-  }
-
-  void _toggleSound(GameState gameState) async {
-    gameState.toggleSound();
-    await _soundEffectsPlayer.play(AssetSource('sounds/gameboy-pluck-41265.mp3'), volume: gameState.volume / 3);
-
-    if (gameState.soundOn) {
-      await _musicPlayer.setVolume(0.3);
-      if (gameState.playing) {
-        await _musicPlayer.resume();
-      }
-    } else {
-      await _musicPlayer.setVolume(0.0);
-      await _musicPlayer.pause();
-    }
   }
 
   @override
@@ -350,7 +296,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
                               borderRadius: BorderRadius.circular(8),
                               color: const Color(0xFFD3CDBF),
                             ),
-                            child: TetrisGameScreen(),
+                            child: widget.gameContent,
                           ),
                         ],
                       ),
@@ -367,21 +313,17 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
                       children: [
                         // Boutons de fonction
                         
-                        Consumer<GameState>(
-                          builder: (context, gameState, child) {
-                            return Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                _buildCircularFunctionButton(gameState.soundOn ? 'SOUND' : 'MUTE', Colors.green, btnSound),
-                                SizedBox(width: 12),
-                                _buildCircularFunctionButton(gameState.playing ? 'PAUSE' : 'PLAY', Colors.orange, btnPause),
-                                SizedBox(width: 12),
-                                _buildCircularFunctionButton('START', Colors.blue, btnStart),
-                                SizedBox(width: 12),
-                                _buildCircularFunctionButton('SETTINGS', Colors.blueGrey, btnSettings),
-                              ],
-                            );
-                          },
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            _buildCircularFunctionButton('SOUND', Colors.green, GameBoyScreen.btnSound),
+                            SizedBox(width: 12),
+                            _buildCircularFunctionButton('PAUSE', Colors.orange, GameBoyScreen.btnPause),
+                            SizedBox(width: 12),
+                            _buildCircularFunctionButton('START', Colors.blue, GameBoyScreen.btnStart),
+                            SizedBox(width: 12),
+                            _buildCircularFunctionButton('SETTINGS', Colors.blueGrey, GameBoyScreen.btnSettings),
+                          ],
                         ),
                         // Contrôles principaux
                         Row(
@@ -406,9 +348,21 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
 
   // Widget pour un bouton de fonction (SOUND, PAUSE, RESET)
   Widget _buildCircularFunctionButton(String text, Color color, String buttonName) {
+    final callback = widget.onButtonPressed[buttonName];
+    if (callback == null) {
+      return Container(); // Don't render the button if no callback is provided
+    }
     bool isPressed = _buttonsPressed[buttonName] ?? false;
     return GestureDetector(
-      onTapDown: (_) => _onButtonPressed(buttonName),
+      onTapDown: (_) {
+        _onButtonPressed(buttonName);
+      },
+      onTapUp: (_) {
+        // No need to set _buttonsPressed[buttonName] = false here, it's handled by Future.delayed in _onButtonPressed
+      },
+      onTapCancel: () {
+        // No need to set _buttonsPressed[buttonName] = false here, it's handled by Future.delayed in _onButtonPressed
+      },
       child: Column(
         children: [
           AnimatedContainer(
@@ -453,10 +407,10 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
       child: Stack(
         alignment: Alignment.center,
         children: [
-          _buildDPadButton(alignment: Alignment.topCenter, buttonName: btnUp, icon: Icons.arrow_upward),
-          _buildDPadButton(alignment: Alignment.centerRight, buttonName: btnRight, icon: Icons.arrow_forward),
-          _buildDPadButton(alignment: Alignment.bottomCenter, buttonName: btnDown, icon: Icons.arrow_downward),
-          _buildDPadButton(alignment: Alignment.centerLeft, buttonName: btnLeft, icon: Icons.arrow_back),
+          _buildDPadButton(alignment: Alignment.topCenter, buttonName: GameBoyScreen.btnUp, icon: Icons.arrow_upward),
+          _buildDPadButton(alignment: Alignment.centerRight, buttonName: GameBoyScreen.btnRight, icon: Icons.arrow_forward),
+          _buildDPadButton(alignment: Alignment.bottomCenter, buttonName: GameBoyScreen.btnDown, icon: Icons.arrow_downward),
+          _buildDPadButton(alignment: Alignment.centerLeft, buttonName: GameBoyScreen.btnLeft, icon: Icons.arrow_back),
           Positioned(
             child: SizedBox(
               width: 60,
@@ -474,25 +428,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   // Widget pour un bouton individuel du D-Pad
   Widget _buildDPadButton({required Alignment alignment, required String buttonName, required IconData icon}) {
     bool isPressed = _buttonsPressed[buttonName] ?? false;
-    final gameState = Provider.of<GameState>(context, listen: false);
-
-    Function? moveFunction;
-    switch (buttonName) {
-      case btnLeft:
-        moveFunction = gameState.moveLeft;
-        break;
-      case btnRight:
-        moveFunction = gameState.moveRight;
-        break;
-      case btnDown:
-        moveFunction = gameState.moveDown;
-        break;
-      case btnUp:
-        // For UP, it's usually a single press for rotation or hard drop, not continuous movement.
-        // We'll keep it as a single press for now, or you can assign a specific action.
-        moveFunction = () { /* No action for UP by default, or assign rotate/hard drop */ };
-        break;
-    }
+    Function? moveFunction = widget.onButtonPressed[buttonName];
 
     return Align(
       alignment: alignment,
@@ -501,7 +437,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
           setState(() {
             _buttonsPressed[buttonName] = true;
           });
-          if (buttonName == btnLeft || buttonName == btnRight || buttonName == btnDown) {
+          if (buttonName == GameBoyScreen.btnLeft || buttonName == GameBoyScreen.btnRight || buttonName == GameBoyScreen.btnDown) {
             _startContinuousMove(moveFunction!);
           } else {
             // For other buttons like BTN_UP, just trigger once
@@ -530,14 +466,13 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
             boxShadow: isPressed
                 ? []
                 : [
-                    BoxShadow(
-                      color: Colors.black26,
-                      offset: Offset(0, 3),
-                      blurRadius: 3,
-                    ),
-                  ],
+                      BoxShadow(
+                        color: Colors.black26,
+                        offset: Offset(0, 3),
+                        blurRadius: 3,
+                      ),
+                    ],
           ),
-          child: Icon(icon, color: Colors.black.withAlpha((255 * 0.6).round()), size: 24),
         ),
       ),
     );
@@ -547,15 +482,19 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   Widget _buildActionButtons() {
     return Row(
       children: [
-        _buildActionButton('ROTATE', btnRotate, 60),
+        _buildActionButton('ROTATE', GameBoyScreen.btnRotate, 60),
         SizedBox(width: 15),
-        _buildActionButton('DROP', btnDrop, 80),
+        _buildActionButton('DROP', GameBoyScreen.btnDrop, 80),
       ],
     );
   }
 
   // Widget pour un bouton d'action individuel
   Widget _buildActionButton(String text, String buttonName, double size) {
+    final callback = widget.onButtonPressed[buttonName];
+    if (callback == null) {
+      return Container(); // Don't render the button if no callback is provided
+    }
     bool isPressed = _buttonsPressed[buttonName] ?? false;
     return GestureDetector(
       onTapDown: (_) => _onButtonPressed(buttonName),

@@ -8,6 +8,9 @@ import 'package:audioplayers/audioplayers.dart';
 
 class GameState with ChangeNotifier {
   final AudioPlayer _soundEffectsPlayer = AudioPlayer();
+  late AudioCache _audioCache;
+  
+  
   // Game state
   int _score = 0;
   int _highScore = 0;
@@ -52,8 +55,17 @@ class GameState with ChangeNotifier {
   int get highScore => _highScore;
 
   GameState() {
+    loadHighScore();
     _currentPiece = _randomPiece();
     _nextPiece = _randomPiece();
+    _audioCache = AudioCache(prefix: 'assets/sounds/');
+    _audioCache.loadAll([
+      'gameboy-pluck-41265.mp3',
+      'gameboy-pluck-41265 (1).mp3',
+      'bit_bomber1-89534.mp3',
+      'cartoon_16-74046.mp3',
+      '8bit-ringtone-free-to-use-loopable-44702.mp3',
+    ]);
   }
 
   Future<void> loadHighScore() async {
@@ -68,6 +80,7 @@ class GameState with ChangeNotifier {
   }
 
   void startGame() {
+    stopAllSounds(); // Stop any lingering sounds from previous game
     _playing = true;
     _gameOver = false;
     _score = 0;
@@ -97,7 +110,7 @@ class GameState with ChangeNotifier {
     if (_isAnimatingLineClear) return; // Pause game during animation
     moveDown();
     _elapsedSeconds++;
-    // notifyListeners(); // Removed redundant call
+    notifyListeners();
   }
 
   Piece _randomPiece() {
@@ -120,6 +133,7 @@ class GameState with ChangeNotifier {
         _saveHighScore();
       }
       playGameOverSound();
+      stopAllSounds();
     } else {
       // No need to calculate ghost piece position
     }
@@ -134,7 +148,6 @@ class GameState with ChangeNotifier {
       _lockPiece();
       _resetTimer(); // Reset timer after locking a piece
     }
-    notifyListeners();
   }
 
   void hardDrop() {
@@ -220,6 +233,10 @@ class GameState with ChangeNotifier {
     }
     _clearLines();
     _newPiece();
+    // notifyListeners(); // Moved to _clearLines or handled by subsequent calls
+    // If _clearLines doesn't notify, we need to notify here
+    // However, _newPiece() might also trigger a game over, which notifies.
+    // For now, keep it here, but consider if it's truly redundant.
     notifyListeners();
   }
 
@@ -257,7 +274,6 @@ class GameState with ChangeNotifier {
           break;
       }
       _score += points * _level;
-      notifyListeners();
 
       // Check for level up
       int newLevel = (_lines ~/ 10) + 1;
@@ -313,6 +329,10 @@ class GameState with ChangeNotifier {
     if (_soundOn) {
       _soundEffectsPlayer.play(AssetSource('sounds/8bit-ringtone-free-to-use-loopable-44702.mp3'), volume: _volume / 3);
     }
+  }
+
+  void stopAllSounds() {
+    _soundEffectsPlayer.stop();
   }
 
   @override
