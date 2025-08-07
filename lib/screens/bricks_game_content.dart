@@ -1,10 +1,13 @@
 import 'package:bricks/game/game_state.dart';
+import 'package:bricks/game/game_grid_painter.dart';
 import 'package:bricks/game/piece.dart';
+import 'package:bricks/game/game_grid_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async'; // Import for Timer
 import 'package:bricks/style/app_style.dart';
 import 'package:tuple/tuple.dart';
+import 'dart:math' as math;
 import 'package:bricks/widgets/game_stats_widgets.dart';
 
 class BricksGameContent extends StatefulWidget {
@@ -81,21 +84,43 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
                     final gameOver = data.item3;
                     final isAnimatingLineClear = data.item4;
 
-                    return Stack(
-                      children: [
-                        _buildGameGrid(grid, currentPiece, gameOver, isAnimatingLineClear),
-                        if (gameOver && _showGameOverText) // Only show if game over and blinking allows
-                          Center(
-                            child: Text(
-                              'GAME OVER',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red,
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final double targetAspect = GameState.cols / GameState.rows; // 10/20
+                        final double maxW = constraints.maxWidth;
+                        final double maxH = constraints.maxHeight;
+                        double width = maxW;
+                        double height = width / targetAspect;
+                        if (height > maxH) {
+                          height = maxH;
+                          width = height * targetAspect;
+                        }
+
+                        return Stack(
+                          children: [
+                            Center(
+                              child: SizedBox(
+                                width: width,
+                                height: height,
+                                child: CustomPaint(
+                                  painter: GameGridPainter(grid, currentPiece, gameOver, isAnimatingLineClear),
+                                ),
                               ),
                             ),
-                          ),
-                      ],
+                            if (gameOver && _showGameOverText)
+                              const Center(
+                                child: Text(
+                                  'GAME OVER',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     );
                   },
                 ),

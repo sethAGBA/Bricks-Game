@@ -116,10 +116,8 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                   painter: _SnakeGamePainter(
                     snake: gameState.snake,
                     food: gameState.food,
-                    obstacles: gameState.obstacles, // Pass obstacles to painter
-                    lcdPixelOn: LcdColors.pixelOn,
-                    lcdPixelOff: LcdColors.pixelOff,
-                    blinkHead: _blinkHead && gameState.isPlaying, // Pass blinking state to painter
+                    obstacles: gameState.obstacles,
+                    blinkHead: _blinkHead && gameState.isPlaying,
                   ),
                   child: gameState.isGameOver && _showGameOverText
                       ? Center(
@@ -248,36 +246,63 @@ class _SnakeGamePainter extends CustomPainter {
   final List<Point<int>> snake;
   final Point<int>? food;
   final List<Point<int>> obstacles;
-  final Color lcdPixelOn;
-  final Color lcdPixelOff;
-  final bool blinkHead; // New property for blinking head
+  final bool blinkHead;
 
   _SnakeGamePainter({
     required this.snake,
     required this.food,
     required this.obstacles,
-    required this.lcdPixelOn,
-    required this.lcdPixelOff,
-    this.blinkHead = false, // Default to false
+    this.blinkHead = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double cellSize = min(size.width / SnakeGameState.cols, size.height / SnakeGameState.rows);
-    // Draw background pixels (off pixels)
+    final double cellWidth = size.width / SnakeGameState.cols;
+    final double cellHeight = size.height / SnakeGameState.rows;
+
+    final Paint backgroundPaint = Paint()..color = LcdColors.background;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
+
+    // Unified BrickPanel-like cell rendering
+    const double gapPx = 1.0;
+    const double outerStrokeWidth = 1.0;
+    const double innerSizeFactor = 0.6;
+    final Paint onPaint = Paint()..color = LcdColors.pixelOn;
+    final Paint offPaint = Paint()..color = LcdColors.pixelOff;
+    final Paint borderPaintOn = Paint()
+      ..color = LcdColors.pixelOn
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+    final Paint borderPaintOff = Paint()
+      ..color = LcdColors.pixelOff
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+
+    Rect cellContentRect(int col, int row) {
+      final double x = col * cellWidth + gapPx / 2;
+      final double y = row * cellHeight + gapPx / 2;
+      final double w = cellWidth - gapPx;
+      final double h = cellHeight - gapPx;
+      return Rect.fromLTWH(x, y, w, h);
+    }
+
+    void drawCell(int col, int row, bool on) {
+      final Rect outer = cellContentRect(col, row);
+      canvas.drawRect(outer, on ? borderPaintOn : borderPaintOff);
+
+      final double innerW = outer.width * innerSizeFactor;
+      final double innerH = outer.height * innerSizeFactor;
+      final double innerOffsetFactor = (1.0 - innerSizeFactor) / 2.0;
+      final double innerX = outer.left + outer.width * innerOffsetFactor;
+      final double innerY = outer.top + outer.height * innerOffsetFactor;
+      final Rect inner = Rect.fromLTWH(innerX, innerY, innerW, innerH);
+      canvas.drawRect(inner, on ? onPaint : offPaint);
+    }
+
+    // Draw all OFF
     for (int i = 0; i < SnakeGameState.rows; i++) {
       for (int j = 0; j < SnakeGameState.cols; j++) {
-        final Rect cellRect = Rect.fromLTWH(
-          j * cellSize,
-          i * cellSize,
-          cellSize,
-          cellSize,
-        );
-        canvas.drawRect(cellRect, Paint()..color = lcdPixelOff);
-        canvas.drawRect(cellRect, Paint()
-          ..color = LcdColors.background
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.5);
+        drawCell(j, i, false);
       }
     }
 
@@ -285,42 +310,19 @@ class _SnakeGamePainter extends CustomPainter {
     final double segmentPadding = 0.5; // Small gap between segments
     for (int i = 0; i < snake.length; i++) {
       final segment = snake[i];
-      final paintColor = (i == 0 && blinkHead) ? Colors.grey : lcdPixelOn; // Head blinks grey
-      canvas.drawRect(
-        Rect.fromLTWH(
-          segment.x * cellSize + segmentPadding,
-          segment.y * cellSize + segmentPadding,
-          cellSize - (2 * segmentPadding),
-          cellSize - (2 * segmentPadding),
-        ),
-        Paint()..color = paintColor,
-      );
+      final bool isHead = i == 0;
+      final bool on = !(isHead && blinkHead);
+      drawCell(segment.x, segment.y, on);
     }
 
     // Draw food
     if (food != null) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          food!.x * cellSize,
-          food!.y * cellSize,
-          cellSize,
-          cellSize,
-        ),
-        Paint()..color = Colors.red,
-      );
+      drawCell(food!.x, food!.y, true);
     }
 
     // Draw obstacles
     for (var obstacle in obstacles) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          obstacle.x * cellSize,
-          obstacle.y * cellSize,
-          cellSize,
-          cellSize,
-        ),
-        Paint()..color = Colors.blueGrey, // Or any other color for obstacles
-      );
+      drawCell(obstacle.x, obstacle.y, true);
     }
   }
 
