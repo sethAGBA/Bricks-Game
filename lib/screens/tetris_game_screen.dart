@@ -11,7 +11,7 @@ class TetrisGameScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final gameState = Provider.of<GameState>(context, listen: false);
     final Map<String, GameButtonCallback> buttonCallbacks = {
-      GameBoyScreen.btnUp: () => {},
+      GameBoyScreen.btnUp: gameState.rotate,
       GameBoyScreen.btnDown: gameState.moveDown,
       GameBoyScreen.btnLeft: gameState.moveLeft,
       GameBoyScreen.btnRight: gameState.moveRight,

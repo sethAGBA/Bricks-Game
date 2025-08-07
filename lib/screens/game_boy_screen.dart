@@ -2,7 +2,7 @@
 import 'package:bricks/widgets/arrow_painter.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:math'; // Added for Random
+import 'dart:math' as math; // Added for Random
 import 'package:audioplayers/audioplayers.dart';
 import 'package:bricks/style/app_style.dart';
 
@@ -43,7 +43,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   Color _mickeyImageColor = Colors.black12; // Initial color
   final List<Color> _randomColors = [Colors.red, Colors.orange, LcdColors.background, Colors.green, Colors.blue, Colors.indigo, Colors.purple];
   Timer? _mickeyColorTimer;
-  final Random _random = Random();
+  final math.Random _random = math.Random();
 
   // Rectangle colors
   late List<Color> _rectangleColors;
@@ -437,12 +437,8 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
           setState(() {
             _buttonsPressed[buttonName] = true;
           });
-          if (buttonName == GameBoyScreen.btnLeft || buttonName == GameBoyScreen.btnRight || buttonName == GameBoyScreen.btnDown) {
-            _startContinuousMove(moveFunction!);
-          } else {
-            // For other buttons like BTN_UP, just trigger once
-            moveFunction!();
-          }
+          // For all D-Pad buttons, just trigger once
+          moveFunction!();
         },
         onTapUp: (_) {
           setState(() {

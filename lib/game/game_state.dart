@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' as math;
 import 'package:bricks/game/piece.dart';
 import 'package:flutter/material.dart';
 
@@ -26,9 +26,10 @@ class GameState with ChangeNotifier {
   late Piece _nextPiece;
   Timer? _timer; // Make timer nullable
   Timer? _moveSoundDebounceTimer;
+  Timer? _gameSecondsTimer; // Tracks real elapsed seconds
 
   // Game speed (milliseconds per tick)
-  final List<int> _levelSpeeds = [800, 720, 630, 550, 470, 380, 300, 220, 130, 100];
+  final List<int> _levelSpeeds = [500, 450, 400, 350, 300, 250, 200, 150, 100, 80];
 
   // Game grid
   static const int rows = 20;
@@ -90,6 +91,7 @@ class GameState with ChangeNotifier {
     grid = List.generate(rows, (_) => List.filled(cols, null));
     _newPiece();
     _resetTimer(); // Use the new timer method
+    _startElapsedTimer();
     notifyListeners();
   }
 
@@ -109,12 +111,11 @@ class GameState with ChangeNotifier {
     void gameLoop() {
     if (_isAnimatingLineClear) return; // Pause game during animation
     moveDown();
-    _elapsedSeconds++;
     notifyListeners();
   }
 
   Piece _randomPiece() {
-    final random = Random();
+    final random = math.Random();
     final type = Tetromino.values[random.nextInt(Tetromino.values.length)];
     return Piece(type: type);
   }
@@ -128,6 +129,7 @@ class GameState with ChangeNotifier {
       _gameOver = true;
       _playing = false;
       _timer?.cancel();
+      _stopElapsedTimer();
       if (_score > _highScore) {
         _highScore = _score;
         _saveHighScore();
@@ -155,7 +157,6 @@ class GameState with ChangeNotifier {
     while (canMove(_currentPiece, dx: 0, dy: 1)) {
       _currentPiece = _currentPiece.copyWith(position: Point(_currentPiece.position.x, _currentPiece.position.y + 1));
     }
-    playLockSound(); // Play sound once after piece has dropped
     _lockPiece();
     _resetTimer(); // Reset timer after locking a piece
     if (!_gameOver) { // Only recalculate and notify if game is not over
@@ -289,6 +290,11 @@ class GameState with ChangeNotifier {
     if (_gameOver) return;
     _playing = !_playing;
     _resetTimer();
+    if (_playing) {
+      _startElapsedTimer();
+    } else {
+      _stopElapsedTimer();
+    }
     notifyListeners();
   }
 
@@ -335,11 +341,27 @@ class GameState with ChangeNotifier {
     _soundEffectsPlayer.stop();
   }
 
+  void _startElapsedTimer() {
+    _gameSecondsTimer?.cancel();
+    _gameSecondsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_playing && !_gameOver) {
+        _elapsedSeconds++;
+        notifyListeners();
+      }
+    });
+  }
+
+  void _stopElapsedTimer() {
+    _gameSecondsTimer?.cancel();
+    _gameSecondsTimer = null;
+  }
+
   @override
   void dispose() {
     _soundEffectsPlayer.dispose();
     _timer?.cancel();
     _moveSoundDebounceTimer?.cancel();
+    _gameSecondsTimer?.cancel();
     super.dispose();
   }
 }

@@ -27,13 +27,12 @@ class MainMenuScreen extends StatelessWidget {
             const SizedBox(height: 50),
             ElevatedButton(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ChangeNotifierProvider.value(
-                    value: GameState(),
+                Navigator.push(context, MaterialPageRoute(builder: (context) {
+                  return ChangeNotifierProvider<GameState>(
+                    create: (_) => GameState(),
                     child: const TetrisGameScreen(),
-                  )),
-                );
+                  );
+                }));
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blueGrey[700], // Button color
@@ -55,13 +54,12 @@ class MainMenuScreen extends StatelessWidget {
             const SizedBox(height: 20), // Add some space between buttons
             ElevatedButton(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ChangeNotifierProvider.value(
-                    value: SnakeGameState(),
+                Navigator.push(context, MaterialPageRoute(builder: (context) {
+                  return ChangeNotifierProvider<SnakeGameState>(
+                    create: (_) => SnakeGameState(),
                     child: const SnakeGameScreen(),
-                  )),
-                );
+                  );
+                }));
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blueGrey[700], // Button color
