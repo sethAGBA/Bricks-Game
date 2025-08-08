@@ -19,6 +19,7 @@ class SnakeGameState with ChangeNotifier {
   static const int _maxObstacles = 5; // Maximum number of random obstacles
 
   int _currentSpeed = _initialSpeed; // Current speed of the snake
+  int _speedSetting = 1; // 1..10 from menu
 
   List<Point<int>> snake = [];
   List<Point<int>> obstacles = []; // New list for obstacles
@@ -37,6 +38,7 @@ class SnakeGameState with ChangeNotifier {
   Timer? _timer;
   Timer? _gameTimer; // For tracking elapsed time
   Timer? _foodTimer; // New timer for food lifespan
+  int _foodRemainingSeconds = _foodLifespan;
   final AudioPlayer _soundEffectsPlayer = AudioPlayer();
   late AudioCache _audioCache;
   bool _soundOn = true;
@@ -60,6 +62,13 @@ class SnakeGameState with ChangeNotifier {
       'cartoon_16-74046.mp3',
       '8bit-ringtone-free-to-use-loopable-44702.mp3',
     ]);
+  }
+
+  void applyMenuSettings({required int level, required int speed}) {
+    level = level.clamp(1, 10);
+    _speedSetting = speed.clamp(1, 10);
+    _currentSpeed = _applySpeedSetting(_initialSpeed, _speedSetting);
+    notifyListeners();
   }
 
   Future<void> loadHighScore() async {
@@ -104,6 +113,7 @@ class SnakeGameState with ChangeNotifier {
       print('SnakeGameState: startGame - already playing or starting, returning.');
       return;
     }
+    stopAllSounds(); // Stop any lingering sounds before starting
     _isStartingGame = true; // Set starting game flag
     isPlaying = false; // Ensure game is not playing during animation
     _initializeGame(); // Reset game state for a new game
@@ -134,10 +144,17 @@ class SnakeGameState with ChangeNotifier {
   void _resetTimer() {
     print('SnakeGameState: _resetTimer called');
     _timer?.cancel();
-    final speed = _isAccelerating ? _acceleratedSpeed : _currentSpeed;
+    final base = _isAccelerating ? _acceleratedSpeed : _currentSpeed;
+    final speed = base;
     _timer = Timer.periodic(Duration(milliseconds: speed), (timer) {
       _moveSnake();
     });
+  }
+
+  int _applySpeedSetting(int baseMs, int setting) {
+    final double factor = (11 - setting) / 10.0; // 1..10 -> 1.0..0.1
+    final int ms = (baseMs * factor).round();
+    return ms.clamp(60, 800);
   }
 
   void toggleAcceleration() {
@@ -158,6 +175,7 @@ class SnakeGameState with ChangeNotifier {
     } else {
       _timer?.cancel(); // Pause game
       _gameTimer?.cancel();
+      stopAllSounds(); // Ensure any playing sounds are stopped when pausing
     }
     notifyListeners();
   }
@@ -165,6 +183,9 @@ class SnakeGameState with ChangeNotifier {
   void toggleSound() {
     _volume = (_volume + 1) % 4;
     _soundOn = _volume > 0;
+    if (!_soundOn) {
+      stopAllSounds();
+    }
     notifyListeners();
   }
 
@@ -186,19 +207,32 @@ class SnakeGameState with ChangeNotifier {
       newFood = Point<int>(random.nextInt(cols), random.nextInt(rows));
     } while (snake.contains(newFood) || obstacles.contains(newFood)); // Ensure food doesn't spawn on snake or obstacles
     food = newFood;
+    _foodRemainingSeconds = _foodLifespan;
     notifyListeners();
 
-    _foodTimer = Timer(Duration(seconds: _foodLifespan), () {
-      print('SnakeGameState: Food expired!');
-      food = null; // Food disappears
-      // life--; // Penalty for not eating food in time - REMOVED
-      if (life > 0) {
-        playSound('8bit-ringtone-free-to-use-loopable-44702.mp3'); // Sound for losing a life
-        _generateFood(); // Generate new food
-      } else {
-        _gameOver();
+    // Use a periodic timer so we can pause/resume with isPlaying
+    _foodTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (isGameOver) {
+        timer.cancel();
+        return;
       }
-      notifyListeners();
+      if (!isPlaying) {
+        return; // paused: do not count down
+      }
+      _foodRemainingSeconds--;
+      if (_foodRemainingSeconds <= 0) {
+        print('SnakeGameState: Food expired!');
+        food = null; // Food disappears
+        if (life > 0) {
+          playSound('8bit-ringtone-free-to-use-loopable-44702.mp3'); // lose life sound or notify
+          // regenerate a new food and reset counter
+          _foodTimer?.cancel();
+          _generateFood();
+        } else {
+          _gameOver();
+        }
+        notifyListeners();
+      }
     });
   }
 

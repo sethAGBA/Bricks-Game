@@ -19,7 +19,9 @@ class BricksGameContent extends StatefulWidget {
 class BricksGameContentState extends State<BricksGameContent> with TickerProviderStateMixin {
   late final GameState gameState;
   bool _showGameOverText = false;
+  bool _showStartText = false;
   Timer? _blinkTimer;
+  Timer? _startBlinkTimer;
 
   @override
   void initState() {
@@ -107,6 +109,10 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
                                 ),
                               ),
                             ),
+                            if (gameState.isStartingGame && !gameOver)
+                              Center(
+                                child: _StartBlinkText(),
+                              ),
                             if (gameOver && _showGameOverText)
                               const Center(
                                 child: Text(
@@ -161,8 +167,31 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
                   final soundOn = data['soundOn'];
                   final volume = data['volume'];
                   final playing = data['playing'];
-            
-                  return _buildInfoPanel(score, lines, level, highScore, nextPiece, elapsedSeconds, soundOn, volume, playing);
+
+                  return Stack(
+                    children: [
+                      // Background grid with OFF cells to match LCD bricks
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: _SidePanelGridPainter(),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.zero,
+                        child: _buildInfoPanel(
+                          score,
+                          lines,
+                          level,
+                          highScore,
+                          nextPiece,
+                          elapsedSeconds,
+                          soundOn,
+                          volume,
+                          playing,
+                        ),
+                      ),
+                    ],
+                  );
                 },
               ),
             ),
@@ -235,9 +264,27 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
         buildStatNumber(highScore.toString().padLeft(5, '0')),
         SizedBox(height: 1),
         buildStatText('Next'),
-        SizedBox(height: 1),
-        Expanded(child: _buildNextPiece(nextPiece)),
-        Spacer(flex: 2),
+        SizedBox(height: 2),
+        Flexible(
+          flex: 2,
+          fit: FlexFit.loose,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final double size = math.min(constraints.maxWidth, constraints.maxHeight) * 0.9; // bigger
+              return Center(
+                child: Container(
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: LcdColors.pixelOn, width: 1),
+                  ),
+                  child: _buildNextPiece(nextPiece),
+                ),
+              );
+            },
+          ),
+        ),
+        SizedBox(height: 6),
 
         // Temps de jeu
         buildStatText('TIME'),
@@ -274,7 +321,7 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
                   Provider.of<GameState>(context, listen: false).togglePlaying();
                 },
                 child: Icon(
-                  playing ? Icons.play_arrow : Icons.pause,
+                  playing ? Icons.pause : Icons.play_arrow,
                   size: 12,
                   color: LcdColors.pixelOn,
                 ),
@@ -287,37 +334,188 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
   }
 
   Widget _buildNextPiece(Piece piece) {
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        border: Border.all(color: LcdColors.pixelOn, width: 1),
-      ),
-      child: Column(
-        children: List.generate(4, (row) {
-          return Expanded(
-            child: Row(
-              children: List.generate(4, (col) {
-                bool isPixelOn = false;
-                if (row < piece.shape.length && col < piece.shape[row].length) {
-                  if (piece.shape[row][col] == 1) {
-                    isPixelOn = true;
-                  }
-                }
-                return Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isPixelOn ? LcdColors.pixelOn : LcdColors.pixelOff,
-                      border: Border.all(color: LcdColors.background, width: 0.5),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          );
-        }),
+    // Use the same BrickPanel-like cells as the main board and fill space
+    return SizedBox.expand(
+      child: CustomPaint(
+        painter: _NextPiecePainter(piece),
       ),
     );
   }
+}
+
+class _StartBlinkText extends StatefulWidget {
+  @override
+  State<_StartBlinkText> createState() => _StartBlinkTextState();
+}
+
+class _StartBlinkTextState extends State<_StartBlinkText> {
+  bool _visible = true;
+  int _count = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (t) {
+      setState(() {
+        _visible = !_visible;
+        _count++;
+        if (_count >= 6) {
+          _timer?.cancel();
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 200),
+      opacity: _visible ? 1 : 0,
+      child: const Text(
+        'START',
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: Colors.green,
+          fontFamily: 'Digital7',
+        ),
+      ),
+    );
+  }
+}
+
+class _NextPiecePainter extends CustomPainter {
+  final Piece piece;
+  _NextPiecePainter(this.piece);
+
+  static const int rows = 4;
+  static const int cols = 4;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Background
+    final Paint bg = Paint()..color = LcdColors.background;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bg);
+
+    final double cellWidth = size.width / cols;
+    final double cellHeight = size.height / rows;
+
+    // Reuse the same visual style constants as the main grid
+    const double gapPx = GameGridPainter.gapPx;
+    const double outerStrokeWidth = GameGridPainter.outerStrokeWidth;
+    const double innerSizeFactor = GameGridPainter.innerSizeFactor;
+
+    final Paint onPaint = Paint()..color = LcdColors.pixelOn;
+    final Paint offPaint = Paint()..color = LcdColors.pixelOff;
+    final Paint borderPaintOn = Paint()
+      ..color = LcdColors.pixelOn
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+    final Paint borderPaintOff = Paint()
+      ..color = LcdColors.pixelOff
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+
+    Rect contentRect(int c, int r) => Rect.fromLTWH(
+          c * cellWidth + gapPx / 2,
+          r * cellHeight + gapPx / 2,
+          cellWidth - gapPx,
+          cellHeight - gapPx,
+        );
+
+    void drawCell(int c, int r, bool on) {
+      final Rect outer = contentRect(c, r);
+      canvas.drawRect(outer, on ? borderPaintOn : borderPaintOff);
+
+      final double innerW = outer.width * innerSizeFactor;
+      final double innerH = outer.height * innerSizeFactor;
+      final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+      final Rect inner = Rect.fromLTWH(
+        outer.left + outer.width * innerOffset,
+        outer.top + outer.height * innerOffset,
+        innerW,
+        innerH,
+      );
+      canvas.drawRect(inner, on ? onPaint : offPaint);
+    }
+
+    // Draw all OFF cells
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        drawCell(c, r, false);
+      }
+    }
+
+    // Draw next piece pixels centered within 4x4 area
+    for (int r = 0; r < piece.shape.length && r < rows; r++) {
+      for (int c = 0; c < piece.shape[r].length && c < cols; c++) {
+        if (piece.shape[r][c] == 1) {
+          drawCell(c, r, true);
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _NextPiecePainter oldDelegate) => oldDelegate.piece != piece;
+}
+
+class _SidePanelGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Fill the entire side panel with OFF cells matching the LCD style
+    const int rows = GameState.rows; // match main grid density vertically
+    const int cols = GameState.cols ~/ 2; // half width panel approximates
+
+    final double cellWidth = size.width / cols;
+    final double cellHeight = size.height / rows;
+
+    final Paint bg = Paint()..color = LcdColors.background;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bg);
+
+    const double gapPx = GameGridPainter.gapPx;
+    const double outerStrokeWidth = GameGridPainter.outerStrokeWidth;
+    const double innerSizeFactor = GameGridPainter.innerSizeFactor;
+
+    final Paint offPaint = Paint()..color = LcdColors.pixelOff;
+    final Paint borderPaintOff = Paint()
+      ..color = LcdColors.pixelOff
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+
+    Rect contentRect(int c, int r) => Rect.fromLTWH(
+          c * cellWidth + gapPx / 2,
+          r * cellHeight + gapPx / 2,
+          cellWidth - gapPx,
+          cellHeight - gapPx,
+        );
+
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final Rect outer = contentRect(c, r);
+        canvas.drawRect(outer, borderPaintOff);
+        final double innerW = outer.width * innerSizeFactor;
+        final double innerH = outer.height * innerSizeFactor;
+        final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+        final Rect inner = Rect.fromLTWH(
+          outer.left + outer.width * innerOffset,
+          outer.top + outer.height * innerOffset,
+          innerW,
+          innerH,
+        );
+        canvas.drawRect(inner, offPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
   

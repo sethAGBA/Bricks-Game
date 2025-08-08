@@ -22,11 +22,13 @@ class GameState with ChangeNotifier {
   final List<int> _linesBeingCleared = [];
   VoidCallback? onGameOver;
   int _elapsedSeconds = 0;
+  bool _isStartingGame = false;
   late Piece _currentPiece;
   late Piece _nextPiece;
   Timer? _timer; // Make timer nullable
   Timer? _moveSoundDebounceTimer;
   Timer? _gameSecondsTimer; // Tracks real elapsed seconds
+  int _speedSetting = 1; // 1..10 from menu
 
   // Game speed (milliseconds per tick)
   final List<int> _levelSpeeds = [500, 450, 400, 350, 300, 250, 200, 150, 100, 80];
@@ -54,6 +56,8 @@ class GameState with ChangeNotifier {
   int get volume => _volume;
   int get elapsedSeconds => _elapsedSeconds;
   int get highScore => _highScore;
+  bool get isStartingGame => _isStartingGame;
+  int get speedSetting => _speedSetting;
 
   GameState() {
     loadHighScore();
@@ -69,6 +73,12 @@ class GameState with ChangeNotifier {
     ]);
   }
 
+  void applyMenuSettings({required int level, required int speed}) {
+    _level = level.clamp(1, 10);
+    _speedSetting = speed.clamp(1, 10);
+    notifyListeners();
+  }
+
   Future<void> loadHighScore() async {
     final prefs = await SharedPreferences.getInstance();
     _highScore = prefs.getInt('highScore') ?? 0;
@@ -82,17 +92,31 @@ class GameState with ChangeNotifier {
 
   void startGame() {
     stopAllSounds(); // Stop any lingering sounds from previous game
-    _playing = true;
+    _playing = false; // show START overlay first
     _gameOver = false;
+    _isStartingGame = true;
     _score = 0;
     _lines = 0;
     _level = 1;
     _elapsedSeconds = 0;
+    _timer?.cancel();
+    _gameSecondsTimer?.cancel();
     grid = List.generate(rows, (_) => List.filled(cols, null));
     _newPiece();
-    _resetTimer(); // Use the new timer method
-    _startElapsedTimer();
-    notifyListeners();
+    notifyListeners(); // refresh UI to show START
+
+    // Play a short jingle before starting
+    playClearSound();
+
+    // Delay real start by ~3 seconds (3 blinks at 500ms toggle)
+    Timer(const Duration(seconds: 3), () {
+      if (_gameOver) return; // guard in case game ended somehow
+      _isStartingGame = false;
+      _playing = true;
+      _resetTimer(); // Use the new timer method
+      _startElapsedTimer();
+      notifyListeners();
+    });
   }
 
   void _resetTimer() {
@@ -101,11 +125,19 @@ class GameState with ChangeNotifier {
 
     if (_playing && !_gameOver) {
       // Use speed based on level, with a fallback for higher levels
-      final speed = (_level - 1 < _levelSpeeds.length) ? _levelSpeeds[_level - 1] : 100;
-      _timer = Timer.periodic(Duration(milliseconds: speed), (timer) {
+      final baseMs = (_level - 1 < _levelSpeeds.length) ? _levelSpeeds[_level - 1] : 100;
+      final adjustedMs = _applySpeedSetting(baseMs);
+      _timer = Timer.periodic(Duration(milliseconds: adjustedMs), (timer) {
         gameLoop();
       });
     }
+  }
+
+  int _applySpeedSetting(int baseMs) {
+    // Map speedSetting (1 slow .. 10 fast) to a multiplier 1.0 -> 0.2
+    final double factor = (11 - _speedSetting) / 10.0; // 1..10 -> 1.0..0.1
+    final int ms = (baseMs * factor).round();
+    return ms.clamp(60, 800);
   }
 
     void gameLoop() {

@@ -123,6 +123,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   }
 
   Timer? _continuousMoveTimer;
+  final Map<String, int> _lastTapMs = {};
 
   // Méthode générique pour gérer la pression des boutons
   void _onButtonPressed(String buttonName) {
@@ -154,6 +155,23 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   void _stopContinuousMove() {
     _continuousMoveTimer?.cancel();
     _continuousMoveTimer = null;
+  }
+
+  void _tapWithBooster(String buttonName, Function action) {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int last = _lastTapMs[buttonName] ?? 0;
+    final int delta = now - last;
+
+    // Always perform the immediate action once
+    action();
+    // Booster: if user taps fast, schedule 1-2 extra actions with small delay
+    if (delta < 200) {
+      Timer(const Duration(milliseconds: 80), () => action());
+      if (delta < 130) {
+        Timer(const Duration(milliseconds: 160), () => action());
+      }
+    }
+    _lastTapMs[buttonName] = now;
   }
 
   @override
@@ -437,8 +455,8 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
           setState(() {
             _buttonsPressed[buttonName] = true;
           });
-          // For all D-Pad buttons, just trigger once
-          moveFunction!();
+          // Use booster instead of continuous repeat for finer control
+          if (moveFunction != null) _tapWithBooster(buttonName, moveFunction);
         },
         onTapUp: (_) {
           setState(() {
@@ -493,7 +511,13 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     }
     bool isPressed = _buttonsPressed[buttonName] ?? false;
     return GestureDetector(
-      onTapDown: (_) => _onButtonPressed(buttonName),
+      onTapDown: (_) {
+        _onButtonPressed(buttonName);
+        // Also apply booster on tap to emulate higher responsiveness when tapping fast
+        _tapWithBooster(buttonName, callback);
+      },
+      onTapUp: (_) {},
+      onTapCancel: () {},
       child: Column(
         children: [
           AnimatedContainer(

@@ -11,12 +11,13 @@ class TetrisGameScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final gameState = Provider.of<GameState>(context, listen: false);
     final Map<String, GameButtonCallback> buttonCallbacks = {
-      GameBoyScreen.btnUp: gameState.rotate,
-      GameBoyScreen.btnDown: gameState.moveDown,
-      GameBoyScreen.btnLeft: gameState.moveLeft,
-      GameBoyScreen.btnRight: gameState.moveRight,
-      GameBoyScreen.btnDrop: gameState.hardDrop,
-      GameBoyScreen.btnRotate: gameState.rotate,
+      // Only START launches the game. Movement actions affect only if playing.
+      GameBoyScreen.btnUp: () { if (gameState.playing) gameState.rotate(); },
+      GameBoyScreen.btnDown: () { if (gameState.playing) gameState.moveDown(); },
+      GameBoyScreen.btnLeft: () { if (gameState.playing) gameState.moveLeft(); },
+      GameBoyScreen.btnRight: () { if (gameState.playing) gameState.moveRight(); },
+      GameBoyScreen.btnDrop: () { if (gameState.playing) gameState.hardDrop(); },
+      GameBoyScreen.btnRotate: () { if (gameState.playing) gameState.rotate(); },
       GameBoyScreen.btnSound: () => gameState.toggleSound(),
       GameBoyScreen.btnPause: () => gameState.togglePlaying(),
       GameBoyScreen.btnStart: () => gameState.startGame(),

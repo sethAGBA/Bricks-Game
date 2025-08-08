@@ -8,9 +8,9 @@ Widget buildStatText(String text) {
       text,
       style: TextStyle(
         color: LcdColors.pixelOn,
-        fontSize: 10, // Increased font size
+        fontSize: 11,
         fontWeight: FontWeight.bold,
-        fontFamily: 'Digital7', // Apply Digital7 font
+        fontFamily: 'Digital7',
       ),
     ),
   );
@@ -23,10 +23,10 @@ Widget buildStatNumber(String number) {
       number,
       style: TextStyle(
         color: LcdColors.pixelOn,
-        fontSize: 16, // Increased font size
+        fontSize: 18,
         fontWeight: FontWeight.w900,
         letterSpacing: 0.5,
-        fontFamily: 'Digital7', // Apply Digital7 font
+        fontFamily: 'Digital7',
       ),
     ),
   );

@@ -1,5 +1,5 @@
 import 'package:bricks/game/game_state.dart';
-import 'package:bricks/screens/main_menu_screen.dart';
+import 'package:bricks/screens/menu_game_screen.dart';
 import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.yellow,
         fontFamily: 'PressStart2P',
       ),
-      home: const MainMenuScreen(),
+      home: const MenuGameScreen(),
       debugShowCheckedModeBanner: false,
     );
   }

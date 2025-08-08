@@ -118,6 +118,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                     food: gameState.food,
                     obstacles: gameState.obstacles,
                     blinkHead: _blinkHead && gameState.isPlaying,
+                    blinkFood: (_blinkHead && gameState.isPlaying),
                   ),
                   child: gameState.isGameOver && _showGameOverText
                       ? Center(
@@ -161,58 +162,76 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
               ),
               Expanded(
                 flex: 1,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Stack(
                   children: [
-                    buildStatText('Score'),
-                    buildStatNumber(gameState.score.toString().padLeft(5, '0')),
-                    SizedBox(height: 10),
-                    buildStatText('Level'),
-                    buildStatNumber(gameState.level.toString()),
-                    SizedBox(height: 10),
-                    buildStatText('HIGH SCORE'),
-                    buildStatNumber(gameState.highScore.toString().padLeft(5, '0')),
-                    SizedBox(height: 10),
-                    buildStatText('LIFE'),
-                    _buildLifeDisplay(gameState.life),
-                    SizedBox(height: 10),
-                    buildStatText('TIME'),
-                    buildStatNumber('${gameState.elapsedSeconds ~/ 60}:${(gameState.elapsedSeconds % 60).toString().padLeft(2, '0')}'),
-                    Spacer(),
-                    Padding(
-                      padding: EdgeInsets.only(bottom: 1),
-                      child: Row(
-                        children: [
-                          Icon(
-                            gameState.soundOn ? Icons.volume_up : Icons.volume_off,
-                            size: 12,
-                            color: LcdColors.pixelOn,
-                          ),
-                          SizedBox(width: 2),
-                          Row(
-                            children: List.generate(3, (i) => Container(
-                              width: 4,
-                              height: 8,
-                              margin: EdgeInsets.symmetric(horizontal: 1),
-                              decoration: BoxDecoration(
-                                color: i < gameState.volume ? LcdColors.pixelOn : LcdColors.pixelOn.withAlpha((255 * 0.3).round()),
-                                borderRadius: BorderRadius.circular(1),
-                              ),
-                            )),
-                          ),
-                          SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () {
-                              gameState.togglePlaying();
-                            },
-                            child: Icon(
-                              gameState.isPlaying ? Icons.play_arrow : Icons.pause,
-                              size: 12,
-                              color: LcdColors.pixelOn,
-                            ),
-                          ),
-                        ],
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _SnakeSidePanelGridPainter(),
                       ),
+                    ),
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        buildStatText('Score'),
+                        buildStatNumber(gameState.score.toString().padLeft(5, '0')),
+                        SizedBox(height: 10),
+                        buildStatText('Level'),
+                        buildStatNumber(gameState.level.toString()),
+                        SizedBox(height: 10),
+                        buildStatText('HIGH SCORE'),
+                        buildStatNumber(gameState.highScore.toString().padLeft(5, '0')),
+                        SizedBox(height: 10),
+                    buildStatText('LIFE'),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        // Use width-based square cells (slightly larger for readability)
+                        final double baseCell = constraints.maxWidth / SnakeGameState.cols;
+                        final double cellSize = baseCell * 1.25; // scale up life cells
+                        final double height = cellSize;
+                        final double width = min(constraints.maxWidth, gameState.life * cellSize);
+                        return SizedBox(height: height, width: width, child: _buildLifeDisplay(gameState.life));
+                      },
+                    ),
+                        SizedBox(height: 10),
+                        buildStatText('TIME'),
+                        buildStatNumber('${gameState.elapsedSeconds ~/ 60}:${(gameState.elapsedSeconds % 60).toString().padLeft(2, '0')}'),
+                        Spacer(),
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 1),
+                          child: Row(
+                            children: [
+                              Icon(
+                                gameState.soundOn ? Icons.volume_up : Icons.volume_off,
+                                size: 12,
+                                color: LcdColors.pixelOn,
+                              ),
+                              SizedBox(width: 2),
+                              Row(
+                                children: List.generate(3, (i) => Container(
+                                  width: 4,
+                                  height: 8,
+                                  margin: EdgeInsets.symmetric(horizontal: 1),
+                                  decoration: BoxDecoration(
+                                    color: i < gameState.volume ? LcdColors.pixelOn : LcdColors.pixelOn.withAlpha((255 * 0.3).round()),
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
+                                )),
+                              ),
+                              SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () {
+                                  gameState.togglePlaying();
+                                },
+                                child: Icon(
+                                  gameState.isPlaying ? Icons.play_arrow : Icons.pause,
+                                  size: 12,
+                                  color: LcdColors.pixelOn,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -225,21 +244,78 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
   }
 
   Widget _buildLifeDisplay(int life) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(life, (index) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2.0),
-        child: Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: LcdColors.pixelOn,
-            border: Border.all(color: LcdColors.background, width: 0.5),
-          ),
-        ),
-      )),
+    // Render lives using the same BrickPanel-like cell style
+    return CustomPaint(
+      painter: _LifeCellsPainter(lifeCount: life),
     );
   }
+}
+
+class _LifeCellsPainter extends CustomPainter {
+  final int lifeCount;
+  _LifeCellsPainter({required this.lifeCount});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Render lives as a single 1-row grid with fixed cell size matching main grids
+    const int rows = 1;
+    final int cols = lifeCount.clamp(0, 10);
+
+    // Make cells square-ish based on height
+    final double cellHeight = size.height;
+    final double cellWidth = cellHeight; // square cells for consistency
+
+    // Colors and styles consistent with grids
+    const double gapPx = 1.0;
+    const double outerStrokeWidth = 1.0;
+    const double innerSizeFactor = 0.6;
+
+    final Paint onPaint = Paint()..color = LcdColors.pixelOn;
+    final Paint offPaint = Paint()..color = LcdColors.pixelOff;
+    final Paint borderPaintOn = Paint()
+      ..color = LcdColors.pixelOn
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+    final Paint borderPaintOff = Paint()
+      ..color = LcdColors.pixelOff
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+
+    // Background
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = LcdColors.background);
+
+    Rect contentRect(int c, int r) => Rect.fromLTWH(
+          c * cellWidth + gapPx / 2,
+          r * cellHeight + gapPx / 2,
+          cellWidth - gapPx,
+          cellHeight - gapPx,
+        );
+
+    void drawCell(int c, int r, bool on) {
+      final Rect outer = contentRect(c, r);
+      canvas.drawRect(outer, on ? borderPaintOn : borderPaintOff);
+      final double innerW = outer.width * innerSizeFactor;
+      final double innerH = outer.height * innerSizeFactor;
+      final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+      final Rect inner = Rect.fromLTWH(
+        outer.left + outer.width * innerOffset,
+        outer.top + outer.height * innerOffset,
+        innerW,
+        innerH,
+      );
+      canvas.drawRect(inner, on ? onPaint : offPaint);
+    }
+
+    // Compute how many cells fit in the available width
+    final int maxCols = size.width ~/ cellWidth;
+    final int toDraw = min(cols, maxCols);
+    for (int c = 0; c < toDraw; c++) {
+      drawCell(c, 0, c < lifeCount);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LifeCellsPainter oldDelegate) => oldDelegate.lifeCount != lifeCount;
 }
 
 class _SnakeGamePainter extends CustomPainter {
@@ -247,12 +323,14 @@ class _SnakeGamePainter extends CustomPainter {
   final Point<int>? food;
   final List<Point<int>> obstacles;
   final bool blinkHead;
+  final bool blinkFood;
 
   _SnakeGamePainter({
     required this.snake,
     required this.food,
     required this.obstacles,
     this.blinkHead = false,
+    this.blinkFood = false,
   });
 
   @override
@@ -317,7 +395,10 @@ class _SnakeGamePainter extends CustomPainter {
 
     // Draw food
     if (food != null) {
-      drawCell(food!.x, food!.y, true);
+      final bool showFood = !blinkFood; // blink: toggle visibility
+      if (showFood) {
+        drawCell(food!.x, food!.y, true);
+      }
     }
 
     // Draw obstacles
@@ -333,4 +414,58 @@ class _SnakeGamePainter extends CustomPainter {
     }
     return true;
   }
+}
+
+class _SnakeSidePanelGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Fill the entire side panel with OFF cells to match LCD style
+    const int rows = SnakeGameState.rows; // match main board rows
+    final int cols = (SnakeGameState.cols / 2).ceil(); // approximate half width
+
+    final double cellWidth = size.width / cols;
+    final double cellHeight = size.height / rows;
+
+    // Background
+    final Paint bg = Paint()..color = LcdColors.background;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bg);
+
+    // Cell style
+    const double gapPx = 1.0;
+    const double outerStrokeWidth = 1.0;
+    const double innerSizeFactor = 0.6;
+
+    final Paint offPaint = Paint()..color = LcdColors.pixelOff;
+    final Paint borderPaintOff = Paint()
+      ..color = LcdColors.pixelOff
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+
+    Rect contentRect(int c, int r) => Rect.fromLTWH(
+          c * cellWidth + gapPx / 2,
+          r * cellHeight + gapPx / 2,
+          cellWidth - gapPx,
+          cellHeight - gapPx,
+        );
+
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final Rect outer = contentRect(c, r);
+        canvas.drawRect(outer, borderPaintOff);
+        final double innerW = outer.width * innerSizeFactor;
+        final double innerH = outer.height * innerSizeFactor;
+        final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+        final Rect inner = Rect.fromLTWH(
+          outer.left + outer.width * innerOffset,
+          outer.top + outer.height * innerOffset,
+          innerW,
+          innerH,
+        );
+        canvas.drawRect(inner, offPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -17,7 +17,7 @@ class GameGridPainter extends CustomPainter {
   static const double gapPx = 1.0; // emulate GridLayout hgap/vgap = 1
   static const double outerStrokeWidth = 1.0;
   static const double outerSizeFactor = 1.0; // full cell (minus gap)
-  static const double innerSizeFactor = 0.6; // make inner square larger
+  static const double innerSizeFactor = 0.6; // inner square ratio; used by menu/preview too
 
   @override
   void paint(Canvas canvas, Size size) {
