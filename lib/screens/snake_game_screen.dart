@@ -15,8 +15,8 @@ class SnakeGameScreen extends StatelessWidget {
       GameBoyScreen.btnDown: () => snakeGameState.changeDirection(Direction.down),
       GameBoyScreen.btnLeft: () => snakeGameState.changeDirection(Direction.left),
       GameBoyScreen.btnRight: () => snakeGameState.changeDirection(Direction.right),
-      GameBoyScreen.btnDrop: () => snakeGameState.toggleAcceleration(), // DROP accelerates
-      GameBoyScreen.btnRotate: null, // ROTATE is hidden
+      GameBoyScreen.btnDrop: null, // hide DROP in snake
+      GameBoyScreen.btnRotate: () => snakeGameState.toggleAcceleration(), // use ROTATE to accelerate (reduced speed)
       GameBoyScreen.btnSound: () => snakeGameState.toggleSound(),
       GameBoyScreen.btnPause: () => snakeGameState.togglePlaying(),
       GameBoyScreen.btnStart: () => snakeGameState.startGame(),
@@ -27,6 +27,10 @@ class SnakeGameScreen extends StatelessWidget {
         child: SnakeGameWidget(),
       ),
       onButtonPressed: buttonCallbacks,
+      // No auto-repeat for Snake; booster taps are sufficient
+      shouldAutoRepeat: (_) => false,
+      rotateButtonSize: 90, // Bigger ROTATE button for Snake
+      dropButtonSize: 60, // Smaller/irrelevant in Snake (hidden)
     );
   }
 }

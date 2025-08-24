@@ -11,6 +11,14 @@ typedef GameButtonCallback = void Function()?;
 class GameBoyScreen extends StatefulWidget {
   final Widget gameContent;
   final Map<String, GameButtonCallback?> onButtonPressed;
+  final Map<String, GameButtonCallback?>? onButtonReleased; // New property
+  // Optional per-button auto-repeat configuration. If provided and returns true
+  // for a button, holding that button will auto-repeat the action with DAS+ARR.
+  final bool Function(String buttonName)? shouldAutoRepeat;
+  final Duration autoRepeatDelay; // DAS (initial delay)
+  final Duration autoRepeatInterval; // ARR (repeat interval)
+  final double rotateButtonSize;
+  final double dropButtonSize;
 
   static const String btnUp = 'up';
   static const String btnDown = 'down';
@@ -27,13 +35,22 @@ class GameBoyScreen extends StatefulWidget {
     super.key,
     required this.gameContent,
     required this.onButtonPressed,
+    this.onButtonReleased, // New parameter
+    this.shouldAutoRepeat,
+    this.autoRepeatDelay = const Duration(milliseconds: 180),
+    this.autoRepeatInterval = const Duration(milliseconds: 50),
+    this.rotateButtonSize = 60,
+    this.dropButtonSize = 80,
+    this.customButtonTexts,
   });
+
+  final Map<String, String>? customButtonTexts;
 
   @override
   GameBoyScreenState createState() => GameBoyScreenState();
 }
 
-class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMixin {
+class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final AudioPlayer _soundEffectsPlayer = AudioPlayer();
   final AudioPlayer _musicPlayer = AudioPlayer();
 
@@ -45,10 +62,20 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   Timer? _mickeyColorTimer;
   final math.Random _random = math.Random();
 
-  // Rectangle colors
-  late List<Color> _rectangleColors;
+  // Rectangle colors: use an immutable base list and a ValueNotifier for the current "lit" index
+  final List<Color> _baseRectangleColors = const [
+    Colors.red,
+    Colors.orange,
+    Colors.yellow,
+    Colors.green,
+    Colors.blue,
+    Colors.indigo,
+    Colors.purple,
+  ];
+  final ValueNotifier<int> _currentRectangleIndex = ValueNotifier<int>(0);
   Timer? _rectangleColorTimer;
-  int _currentRectangleColorIndex = 0;
+  late AnimationController _rectPulseController;
+  late Animation<double> _rectPulseAnim;
 
   // Map pour suivre quel bouton est actuellement pressé
   final Map<String, bool> _buttonsPressed = {
@@ -67,40 +94,42 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initLedAnimation();
     _startMickeyColorTimer();
-  // Couleurs de l'arc-en-ciel
-  _rectangleColors = [
-    Colors.red,
-    Colors.orange,
-    Colors.yellow,
-    Colors.green,
-    Colors.blue,
-    Colors.indigo,
-    Colors.purple,
-  ];
-  
-  _rectangleColorTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
-    setState(() {
-      // Remet toutes les couleurs normales
-      for (int i = 0; i < _rectangleColors.length; i++) {
-        _rectangleColors[i] = [
-          Colors.red,
-          Colors.orange,
-          Colors.yellow,
-          Colors.green,
-          Colors.blue,
-          Colors.indigo,
-          Colors.purple,
-        ][i];
-      }
-      // Allume le rectangle courant (par exemple en blanc)
-      _rectangleColors[_currentRectangleColorIndex] = Colors.transparent;
-      // Passe au suivant
-      _currentRectangleColorIndex = (_currentRectangleColorIndex + 1) % _rectangleColors.length;
-    });
-  });
+    // Pulse animation for the lit rectangle
+    _rectPulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+    _rectPulseAnim = Tween<double>(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: _rectPulseController, curve: Curves.easeInOut));
+    _rectPulseController.repeat(reverse: true);
 
+    // Start a timer that only updates the current index (minimize rebuild work)
+    _startRectangleTimer();
+
+  }
+
+  void _startRectangleTimer() {
+    _rectangleColorTimer?.cancel();
+    _rectangleColorTimer = Timer.periodic(const Duration(milliseconds: 180), (_) {
+      _currentRectangleIndex.value = (_currentRectangleIndex.value + 1) % _baseRectangleColors.length;
+    });
+  }
+
+  void _stopRectangleTimer() {
+    _rectangleColorTimer?.cancel();
+    _rectangleColorTimer = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause animations/timers when app is not active to save CPU
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _rectPulseController.stop();
+      _stopRectangleTimer();
+    } else if (state == AppLifecycleState.resumed) {
+      _rectPulseController.repeat(reverse: true);
+      _startRectangleTimer();
+    }
+    super.didChangeAppLifecycleState(state);
   }
 
   void _startMickeyColorTimer() {
@@ -123,6 +152,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   }
 
   Timer? _continuousMoveTimer;
+  Timer? _dasTimer; // initial delay for auto-repeat (DAS)
   final Map<String, int> _lastTapMs = {};
 
   // Méthode générique pour gérer la pression des boutons
@@ -144,17 +174,25 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     }
   }
 
-  void _startContinuousMove(Function moveFunction, {Duration interval = const Duration(milliseconds: 100)}) {
-    _continuousMoveTimer?.cancel(); // Cancel any existing timer
-    moveFunction(); // Execute once immediately
-    _continuousMoveTimer = Timer.periodic(interval, (timer) {
-      moveFunction();
+  void _startAutoRepeat(String buttonName, Function action) {
+    _stopContinuousMove();
+    _dasTimer?.cancel();
+    // Execute once immediately
+    action();
+    // Start DAS (delayed auto shift)
+    final delay = widget.autoRepeatDelay;
+    final interval = widget.autoRepeatInterval;
+    _dasTimer = Timer(delay, () {
+      // Start ARR (auto repeat rate)
+      _continuousMoveTimer = Timer.periodic(interval, (_) => action());
     });
   }
 
   void _stopContinuousMove() {
     _continuousMoveTimer?.cancel();
     _continuousMoveTimer = null;
+    _dasTimer?.cancel();
+    _dasTimer = null;
   }
 
   void _tapWithBooster(String buttonName, Function action) {
@@ -179,7 +217,10 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     _soundEffectsPlayer.dispose();
     _musicPlayer.dispose();
     _ledAnimationController.dispose();
+  WidgetsBinding.instance.removeObserver(this);
+  _rectPulseController.dispose();
     _continuousMoveTimer?.cancel();
+    _dasTimer?.cancel();
     _mickeyColorTimer?.cancel();
     _rectangleColorTimer?.cancel(); // Cancel the new timer
     super.dispose();
@@ -235,18 +276,36 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
                     color: _mickeyImageColor,
                   ),
                       SizedBox(width: 10), // Space between image and rectangles
-                      Row(
-                        children: List.generate(7, (i) => SizedBox(
-                          width: 9,
-                          height: 15,
-                          child: Container(
-                            margin: EdgeInsets.symmetric(horizontal: 1),
-                            decoration: BoxDecoration(
-                              color: _rectangleColors[i],
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        )),
+                      // Rainbow rectangles with a single changing "lit" index
+                      ValueListenableBuilder<int>(
+                        valueListenable: _currentRectangleIndex,
+                        builder: (context, currentIndex, _) {
+                          return AnimatedBuilder(
+                            animation: _rectPulseController,
+                            builder: (context, __) {
+                              return Row(
+                                children: List.generate(_baseRectangleColors.length, (i) {
+                                  final base = _baseRectangleColors[i];
+                                  final bool isLit = i == currentIndex;
+                                  final displayColor = isLit
+                                      ? Color.alphaBlend(Colors.white.withOpacity(0.6 * _rectPulseAnim.value), base)
+                                      : base.withOpacity(0.9);
+                                  return SizedBox(
+                                    width: 9,
+                                    height: 15,
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                                      decoration: BoxDecoration(
+                                        color: displayColor,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              );
+                            },
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -444,6 +503,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   }
 
   // Widget pour un bouton individuel du D-Pad
+  // Widget pour un bouton individuel du D-Pad
   Widget _buildDPadButton({required Alignment alignment, required String buttonName, required IconData icon}) {
     bool isPressed = _buttonsPressed[buttonName] ?? false;
     Function? moveFunction = widget.onButtonPressed[buttonName];
@@ -455,20 +515,28 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
           setState(() {
             _buttonsPressed[buttonName] = true;
           });
-          // Use booster instead of continuous repeat for finer control
-          if (moveFunction != null) _tapWithBooster(buttonName, moveFunction);
+          if (moveFunction != null) {
+            final shouldRepeat = widget.shouldAutoRepeat?.call(buttonName) ?? false;
+            if (shouldRepeat) {
+              _startAutoRepeat(buttonName, moveFunction);
+            } else {
+              _tapWithBooster(buttonName, moveFunction);
+            }
+          }
         },
         onTapUp: (_) {
           setState(() {
             _buttonsPressed[buttonName] = false;
           });
           _stopContinuousMove();
+          widget.onButtonReleased?[buttonName]?.call(); // Call onButtonReleased
         },
         onTapCancel: () {
           setState(() {
             _buttonsPressed[buttonName] = false;
           });
           _stopContinuousMove();
+          widget.onButtonReleased?[buttonName]?.call(); // Call onButtonReleased
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
@@ -496,9 +564,9 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
   Widget _buildActionButtons() {
     return Row(
       children: [
-        _buildActionButton('ROTATE', GameBoyScreen.btnRotate, 60),
+        _buildActionButton('ROTATE', GameBoyScreen.btnRotate, widget.rotateButtonSize),
         SizedBox(width: 15),
-        _buildActionButton('DROP', GameBoyScreen.btnDrop, 80),
+        _buildActionButton('DROP', GameBoyScreen.btnDrop, widget.dropButtonSize),
       ],
     );
   }
@@ -510,14 +578,35 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
       return Container(); // Don't render the button if no callback is provided
     }
     bool isPressed = _buttonsPressed[buttonName] ?? false;
+    final buttonText = widget.customButtonTexts?[buttonName] ?? text;
     return GestureDetector(
       onTapDown: (_) {
-        _onButtonPressed(buttonName);
-        // Also apply booster on tap to emulate higher responsiveness when tapping fast
-        _tapWithBooster(buttonName, callback);
+        // Debounce actions like DROP/ROTATE to avoid double triggers
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final last = _lastTapMs[buttonName] ?? 0;
+        final int cooldownMs = (buttonName == GameBoyScreen.btnDrop) ? 180 : 120;
+        if (now - last >= cooldownMs) {
+          _lastTapMs[buttonName] = now;
+          // mark pressed and call handler
+          setState(() {
+            _buttonsPressed[buttonName] = true;
+          });
+          _onButtonPressed(buttonName);
+        }
       },
-      onTapUp: (_) {},
-      onTapCancel: () {},
+      onTapUp: (_) {
+        setState(() {
+          _buttonsPressed[buttonName] = false;
+        });
+        // notify release callbacks if any
+        widget.onButtonReleased?[buttonName]?.call();
+      },
+      onTapCancel: () {
+        setState(() {
+          _buttonsPressed[buttonName] = false;
+        });
+        widget.onButtonReleased?[buttonName]?.call();
+      },
       child: Column(
         children: [
           AnimatedContainer(
@@ -540,7 +629,7 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
           ),
           SizedBox(height: 10),
           Text(
-            text,
+            buttonText,
             style: TextStyle(
               color: Colors.black,
               fontSize: 14,

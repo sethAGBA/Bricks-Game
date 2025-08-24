@@ -17,7 +17,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
 
   late final SnakeGameState gameState;
   bool _showGameOverText = false;
-  bool _showStartText = false; // New state for start animation
+  bool _showStartText = false; // Deprecated for start; kept for game over only
   bool _blinkHead = true; // State for snake head blinking
   Timer? _blinkTimer; // Timer for game over/start text blinking
   Timer? _headBlinkTimer; // Timer for snake head blinking
@@ -53,13 +53,8 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
         });
       });
     } else if (gameState.isStartingGame) {
-      _showStartText = true; // Ensure it's visible initially
-      _blinkTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-        setState(() {
-          _showStartText = !_showStartText;
-          print('SnakeGameWidget: _showStartText toggled: $_showStartText');
-        });
-      });
+      // Start blinking is driven by SnakeGameState (3 blinks over ~3s)
+      // No local timer needed here.
     } else if (gameState.isPlaying) {
       _startHeadBlinking(); // Resume head blinking if game is playing
     } else {
@@ -136,20 +131,15 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                             ],
                           ),
                         )
-                      : gameState.isStartingGame && _showStartText
+                      : gameState.isStartingGame
                           ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'START',
-                                    style: TextStyle(
-                                      color: gameState.startBlinkColor,
-                                      fontSize: 24,
-                                      fontFamily: 'Digital7',
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                'START',
+                                style: TextStyle(
+                                  color: gameState.startBlinkColor,
+                                  fontSize: 24,
+                                  fontFamily: 'Digital7',
+                                ),
                               ),
                             )
                           : Container(width: double.infinity, height: double.infinity),

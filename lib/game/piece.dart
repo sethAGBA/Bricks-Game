@@ -8,6 +8,16 @@ class Point<T extends num> {
   final T y;
 
   const Point(this.x, this.y);
+
+  @override
+  bool operator ==(Object other) =>
+      other is Point<T> && other.x == x && other.y == y;
+
+  @override
+  int get hashCode => Object.hash(x, y);
+
+  @override
+  String toString() => 'Point($x, $y)'; // Added for better debugging output
 }
 
 class Piece {

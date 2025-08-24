@@ -11,7 +11,7 @@ class SnakeGameState with ChangeNotifier {
   static const int cols = 10;
   static const int _initialSnakeLength = 3;
   static const int _initialSpeed = 300; // milliseconds per tick
-  static const int _acceleratedSpeed = 50; // Faster speed for acceleration
+  static const int _acceleratedSpeed = 120; // Reduced acceleration speed (slower than before)
   static const int _speedIncreaseInterval = 5; // Increase speed every 5 points
   static const int _speedIncreaseAmount = 10; // Decrease speed by 10ms
   static const int _foodLifespan = 5; // Seconds before food disappears
@@ -38,11 +38,14 @@ class SnakeGameState with ChangeNotifier {
   Timer? _timer;
   Timer? _gameTimer; // For tracking elapsed time
   Timer? _foodTimer; // New timer for food lifespan
+  Timer? _startBlinkTimer; // Start text blinking timer
   int _foodRemainingSeconds = _foodLifespan;
   final AudioPlayer _soundEffectsPlayer = AudioPlayer();
   late AudioCache _audioCache;
   bool _soundOn = true;
   int _volume = 2;
+  bool _isDisposed = false; // Guard against post-dispose callbacks
+  int _lastSoundPlayMs = 0; // Debounce for sound plays
 
   // Getters
   bool get soundOn => _soundOn;
@@ -92,7 +95,6 @@ class SnakeGameState with ChangeNotifier {
     direction = Direction.right;
     isGameOver = false; // Ensure game is not over
     isPlaying = false; // Ensure game is not playing initially
-    _isStartingGame = false; // Reset starting game flag
     _isAccelerating = false; // Reset acceleration
     score = 0;
     level = 1;
@@ -101,6 +103,7 @@ class SnakeGameState with ChangeNotifier {
     _currentSpeed = _initialSpeed; // Initialize current speed
     obstacles = []; // Initialize obstacles list
     _foodTimer?.cancel(); // Cancel any existing food timer
+    _startBlinkTimer?.cancel(); // Cancel any existing start blink timer
     _generateFood();
     _generateObstacles(); // Generate obstacles
     print('SnakeGameState: _initializeGame - isGameOver: $isGameOver, isPlaying: $isPlaying');
@@ -114,24 +117,35 @@ class SnakeGameState with ChangeNotifier {
       return;
     }
     stopAllSounds(); // Stop any lingering sounds before starting
-    _isStartingGame = true; // Set starting game flag
     isPlaying = false; // Ensure game is not playing during animation
     _initializeGame(); // Reset game state for a new game
+    _isStartingGame = true; // Set starting game flag AFTER reset
     playSound('cartoon_16-74046.mp3'); // Play start game sound
 
     int blinkCount = 0;
-    Timer.periodic(const Duration(milliseconds: 500), (timer) {
+    _startBlinkTimer?.cancel();
+    _startBlinkTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (_isDisposed) {
+        timer.cancel();
+        _startBlinkTimer = null;
+        return;
+      }
       blinkCount++;
       _startBlinkColor = (blinkCount % 2 == 1) ? Colors.green : Colors.transparent;
       print('SnakeGameState: _startBlinkColor: $_startBlinkColor, blinkCount: $blinkCount');
       notifyListeners();
       if (blinkCount >= 6) { // 3 blinks (on/off is 2 blinks)
         timer.cancel();
+        _startBlinkTimer = null;
         _isStartingGame = false; // Reset starting game flag
         print('SnakeGameState: _isStartingGame set to false');
         isPlaying = true; // Start playing
         _resetTimer(); // Start game timer
         _gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (_isDisposed) {
+            timer.cancel();
+            return;
+          }
           elapsedSeconds++;
           notifyListeners();
         });
@@ -147,6 +161,10 @@ class SnakeGameState with ChangeNotifier {
     final base = _isAccelerating ? _acceleratedSpeed : _currentSpeed;
     final speed = base;
     _timer = Timer.periodic(Duration(milliseconds: speed), (timer) {
+      if (_isDisposed) {
+        timer.cancel();
+        return;
+      }
       _moveSnake();
     });
   }
@@ -169,6 +187,10 @@ class SnakeGameState with ChangeNotifier {
     if (isPlaying) {
       _resetTimer(); // Resume game
       _gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (_isDisposed) {
+          timer.cancel();
+          return;
+        }
         elapsedSeconds++;
         notifyListeners();
       });
@@ -190,9 +212,11 @@ class SnakeGameState with ChangeNotifier {
   }
 
   void playSound(String soundPath) {
-    if (_soundOn) {
-      _soundEffectsPlayer.play(AssetSource('sounds/$soundPath'), volume: _volume / 3);
-    }
+    if (!_soundOn || _isDisposed) return;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSoundPlayMs < 80) return; // debounce audio spam
+    _lastSoundPlayMs = now;
+    _soundEffectsPlayer.play(AssetSource('sounds/$soundPath'), volume: _volume / 3);
   }
 
   void stopAllSounds() {
@@ -350,9 +374,11 @@ class SnakeGameState with ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _timer?.cancel();
     _gameTimer?.cancel();
     _foodTimer?.cancel(); // Cancel food timer on dispose
+    _startBlinkTimer?.cancel();
     _soundEffectsPlayer.dispose();
     super.dispose();
   }

@@ -26,6 +26,9 @@ class TetrisGameScreen extends StatelessWidget {
     return GameBoyScreen(
       gameContent: BricksGameContent(),
       onButtonPressed: buttonCallbacks,
+      shouldAutoRepeat: (btn) => btn == GameBoyScreen.btnLeft || btn == GameBoyScreen.btnRight || btn == GameBoyScreen.btnDown,
+      autoRepeatDelay: const Duration(milliseconds: 140), // faster DAS for tetris
+      autoRepeatInterval: const Duration(milliseconds: 40), // fast ARR
     );
   }
 }
