@@ -20,7 +20,7 @@ class TanksGameState with ChangeNotifier {
   int _speedSetting = 1;
 
   // Entities
-  Tank _player = Tank(Point<int>(cols ~/ 2, rows - 3), Dir.up);
+  Tank _player = Tank(Point<int>(cols ~/ 2 - 1, rows ~/ 2 - 1), Dir.up);
   final List<Tank> _enemies = <Tank>[];
   final List<_Bullet> _bullets = <_Bullet>[]; // player bullets with dir
   final List<_Bullet> _enemyBullets = <_Bullet>[];
@@ -97,7 +97,7 @@ class TanksGameState with ChangeNotifier {
     _gameOver = false;
     _gameOverAnimTimer?.cancel();
     _gameOverAnimFrame = 0;
-    _player = Tank(Point<int>(cols ~/ 2, rows - 3), Dir.up);
+    _player = Tank(Point<int>(cols ~/ 2 - 1, rows ~/ 2 - 1), Dir.up);
     _enemies.clear();
     _bullets.clear();
     _enemyBullets.clear();
@@ -107,7 +107,7 @@ class TanksGameState with ChangeNotifier {
     _rapidActive = false; _rapidUntilTick = 0;
     _tick = 0;
     _spawnWalls();
-    _spawnEnemies();
+    _spawnEnemies(initial: true);
     _resetLoop();
     _startSeconds();
     notifyListeners();
@@ -130,27 +130,66 @@ class TanksGameState with ChangeNotifier {
       final int c = (i % 2 == 0) ? (cols ~/ 2 - 2) : (cols ~/ 2 + 1);
       if (c >= 0 && c < cols) _walls.add(Point<int>(c, r));
     }
-  }
-
-  void _spawnEnemies() {
-    final rnd = Random();
-    final int count = 2 + (_level ~/ 2);
-    int placed = 0;
-    int attempts = 0;
-    // Try to place up to 'count' enemies, ensuring the whole 3x3 tank fits in-bounds
-    // and doesn't collide with walls, player, or other enemies.
-    while (placed < count && placed < 6 && attempts < 200) {
-      attempts++;
-      // Choose a top-left within valid horizontal range so 3x3 fits: [0..cols-3]
-      final int x = rnd.nextInt(max(1, cols - 2));
-      // Spawn near the top rows (1..3) like before
-      final int y = 1 + rnd.nextInt(3);
-      final p = Point<int>(x, y);
-      if (_canPlaceTankAt(p, Dir.down)) {
-        _enemies.add(Tank(p, Dir.down));
-        placed++;
+    // Ensure the center 3x3 area is clear for the player spawn
+    final int cx = cols ~/ 2 - 1;
+    final int cy = rows ~/ 2 - 1;
+    for (int dy = 0; dy < 3; dy++) {
+      for (int dx = 0; dx < 3; dx++) {
+        _walls.remove(Point<int>(cx + dx, cy + dy));
       }
     }
+  }
+
+  void _spawnEnemies({bool initial = false}) {
+    final rnd = Random();
+    int count = min(6, 2 + (_level ~/ 2));
+    // At game start, ensure we spawn 4 enemies (one per side)
+    if (initial && count < 4) count = 4;
+    int placed = 0;
+    int attempts = 0;
+
+    // First, try to place one enemy on each side
+    final List<int> sides = [0, 1, 2, 3]..shuffle(rnd); // 0=top,1=bottom,2=left,3=right
+    for (final s in sides) {
+      if (placed >= count) break;
+      if (_trySpawnOnSide(s, rnd)) placed++;
+    }
+
+    // Fill remaining
+    while (placed < count && attempts < 200) {
+      attempts++;
+      if (_trySpawnOnSide(rnd.nextInt(4), rnd)) placed++;
+    }
+  }
+
+  bool _trySpawnOnSide(int side, Random rnd) {
+    // Attempt a few times per side to find a valid slot
+    for (int i = 0; i < 30; i++) {
+      late final Point<int> p;
+      late final Dir d;
+      switch (side) {
+        case 0: // top -> move down
+          p = Point<int>(rnd.nextInt(cols - 2), 0);
+          d = Dir.down;
+          break;
+        case 1: // bottom -> move up
+          p = Point<int>(rnd.nextInt(cols - 2), rows - 3);
+          d = Dir.up;
+          break;
+        case 2: // left -> move right
+          p = Point<int>(0, rnd.nextInt(rows - 2));
+          d = Dir.right;
+          break;
+        default: // right -> move left
+          p = Point<int>(cols - 3, rnd.nextInt(rows - 2));
+          d = Dir.left;
+      }
+      if (_canPlaceTankAt(p, d)) {
+        _enemies.add(Tank(p, d));
+        return true;
+      }
+    }
+    return false;
   }
 
   void _resetLoop() {
@@ -199,7 +238,7 @@ class TanksGameState with ChangeNotifier {
     _gameOverAnimFrame = 0;
     Sfx.stopAll();
     _score = 0; _life = 4; _elapsedSeconds = 0; _level = _initialLevel;
-    _player = Tank(Point<int>(cols ~/ 2, rows - 3), Dir.up);
+    _player = Tank(Point<int>(cols ~/ 2 - 1, rows ~/ 2 - 1), Dir.up);
     _enemies.clear(); _bullets.clear(); _enemyBullets.clear(); _walls.clear();
     notifyListeners();
   }
@@ -217,34 +256,45 @@ class TanksGameState with ChangeNotifier {
       _impacts.removeWhere((im) => ++im.frame > im.maxFrames);
     }
 
-    // Move enemy tanks occasionally
-    if (_tick % 2 == 0) {
+    // Move enemy tanks; frequency increases with level
+    final int moveEvery = _enemyMoveEvery();
+    if (_tick % moveEvery == 0) {
       final rnd = Random();
       for (final e in _enemies) {
-        if (rnd.nextDouble() < 0.5) {
-          // random turn
+        // Occasional random turn; decreases with level (becomes more purposeful)
+        final double turnProb = (0.5 - 0.03 * _level).clamp(0.1, 0.5).toDouble();
+        if (rnd.nextDouble() < turnProb) {
           e.dir = Dir.values[rnd.nextInt(4)];
         }
-        final np = _step(e.pos, e.dir);
-        // Move only if the full 3x3 footprint remains valid and in-bounds
-        if (_canPlaceTankAt(np, e.dir, ignore: e)) {
+        // Try to move; if blocked, choose a better direction (bias towards the player / LOS)
+        Dir dir = e.dir;
+        Point<int> np = _step(e.pos, dir);
+        if (_canPlaceTankAt(np, dir, ignore: e)) {
           e.pos = np;
+        } else {
+          dir = _chooseEnemyDirection(e);
+          np = _step(e.pos, dir);
+          if (_canPlaceTankAt(np, dir, ignore: e)) {
+            e.dir = dir;
+            e.pos = np;
+          }
         }
-        // Enemy fire: if line-of-sight towards player (no wall blocking) fire in that dir
+        // Enemy fire: LOS fire probability and random fire scale with level
         final Dir? los = _lineOfSightDir(e.pos, _player.pos);
-        if (los != null && rnd.nextDouble() < 0.5) {
+        final double pLos = _enemyLosFireProb();
+        final double pRnd = _enemyRandomFireProb();
+        if (los != null && rnd.nextDouble() < pLos) {
           final start = _barrelStart(e.pos, los);
           if (_inBounds(start) && !_walls.contains(start)) {
             _enemyBullets.add(_Bullet(start, los));
+            if (_soundOn) Sfx.play('sounds/gameboy-pluck-41265.mp3', volume: _volume / 3);
           }
-          if (_soundOn) Sfx.play('sounds/gameboy-pluck-41265.mp3', volume: _volume / 3);
-        } else if (rnd.nextDouble() < 0.05) {
-          // occasional random fire
+        } else if (rnd.nextDouble() < pRnd) {
           final start = _barrelStart(e.pos, e.dir);
           if (_inBounds(start) && !_walls.contains(start)) {
             _enemyBullets.add(_Bullet(start, e.dir));
+            if (_soundOn) Sfx.play('sounds/gameboy-pluck-41265.mp3', volume: _volume / 3);
           }
-          if (_soundOn) Sfx.play('sounds/gameboy-pluck-41265.mp3', volume: _volume / 3);
         }
       }
     }
@@ -372,6 +422,55 @@ class TanksGameState with ChangeNotifier {
     }
   }
 
+  // Enemy AI helpers: scale movement and firing with level
+  int _enemyMoveEvery() {
+    // Move every 2 ticks at low levels, then every tick at level >= 4
+    final int every = 2 - (_level ~/ 4);
+    return every < 1 ? 1 : every;
+  }
+
+  double _enemyLosFireProb() {
+    // Line-of-sight fire probability grows with level [0.3 .. 0.85]
+    final double p = 0.30 + 0.05 * (_level - 1);
+    return p.clamp(0.30, 0.85);
+  }
+
+  double _enemyRandomFireProb() {
+    // Occasional random fire probability grows with level [0.03 .. 0.20]
+    final double p = 0.03 + 0.01 * (_level - 1);
+    return p.clamp(0.03, 0.20);
+  }
+
+  Dir _chooseEnemyDirection(Tank e) {
+    // Prefer LOS direction if available (with increasing bias by level),
+    // otherwise choose a valid direction that reduces distance to player.
+    final rnd = Random();
+    final List<Dir> candidates = [];
+    for (final d in Dir.values) {
+      final np = _step(e.pos, d);
+      if (_canPlaceTankAt(np, d, ignore: e)) candidates.add(d);
+    }
+    if (candidates.isEmpty) return e.dir;
+
+    final Dir? los = _lineOfSightDir(e.pos, _player.pos);
+    if (los != null && candidates.contains(los)) {
+      final double losBias = (0.40 + 0.06 * _level).clamp(0.40, 0.90);
+      if (rnd.nextDouble() < losBias) return los;
+    }
+
+    // Choose direction that minimizes Manhattan distance from (future center) to player's center
+    final Point<int> playerCenter = Point<int>(_player.pos.x + 1, _player.pos.y + 1);
+    Dir best = candidates.first;
+    int bestDist = 1 << 30;
+    for (final d in candidates) {
+      final np = _step(e.pos, d);
+      final Point<int> center = Point<int>(np.x + 1, np.y + 1);
+      final int dist = (playerCenter.x - center.x).abs() + (playerCenter.y - center.y).abs();
+      if (dist < bestDist) { bestDist = dist; best = d; }
+    }
+    return best;
+  }
+
   void _onLifeLost() {
     _life--;
     if (_life <= 0) {
@@ -380,7 +479,7 @@ class TanksGameState with ChangeNotifier {
       // Impact ring on player hit (center of tank)
       final hitCenter = Point<int>(_player.pos.x + 1, _player.pos.y + 1);
       _impacts.add(_Impact(hitCenter, 0, 6));
-      _player = Tank(Point<int>(cols ~/ 2, rows - 3), Dir.up);
+      _player = Tank(Point<int>(cols ~/ 2 - 1, rows ~/ 2 - 1), Dir.up);
       _bullets.clear(); _enemyBullets.clear();
       if (_soundOn) Sfx.play('sounds/8bit-ringtone-free-to-use-loopable-44702.mp3', volume: _volume / 3);
     }
