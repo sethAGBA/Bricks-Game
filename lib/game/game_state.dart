@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:bricks/audio/sfx.dart';
 
 class GameState with ChangeNotifier {
   final AudioPlayer _soundEffectsPlayer = AudioPlayer();
@@ -340,37 +341,38 @@ class GameState with ChangeNotifier {
     _moveSoundDebounceTimer?.cancel();
     _moveSoundDebounceTimer = Timer(const Duration(milliseconds: 50), () {
       if (_soundOn) {
-        _soundEffectsPlayer.play(AssetSource('sounds/gameboy-pluck-41265.mp3'), volume: _volume / 3);
+        Sfx.play('sounds/gameboy-pluck-41265.mp3', volume: _volume / 3);
       }
     });
   }
 
   void playRotateSound() {
     if (_soundOn) {
-      _soundEffectsPlayer.play(AssetSource('sounds/gameboy-pluck-41265 (1).mp3'), volume: _volume / 3);
+      Sfx.play('sounds/gameboy-pluck-41265 (1).mp3', volume: _volume / 3);
     }
   }
 
   void playLockSound() {
     if (_soundOn) {
-      _soundEffectsPlayer.play(AssetSource('sounds/bit_bomber1-89534.mp3'), volume: _volume / 3);
+      Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
     }
   }
 
   void playClearSound() {
     if (_soundOn) {
-      _soundEffectsPlayer.play(AssetSource('sounds/cartoon_16-74046.mp3'), volume: _volume / 3);
+      Sfx.play('sounds/cartoon_16-74046.mp3', volume: _volume / 3);
     }
   }
 
   void playGameOverSound() {
     if (_soundOn) {
-      _soundEffectsPlayer.play(AssetSource('sounds/8bit-ringtone-free-to-use-loopable-44702.mp3'), volume: _volume / 3);
+      Sfx.play('sounds/8bit-ringtone-free-to-use-loopable-44702.mp3', volume: _volume / 3);
     }
   }
 
   void stopAllSounds() {
-    _soundEffectsPlayer.stop();
+    // No-op with pooled SFX; leave in case of future background players
+    try { _soundEffectsPlayer.stop(); } catch (_) {}
   }
 
   void _startElapsedTimer() {

@@ -4,6 +4,7 @@ import 'package:bricks/game/piece.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:bricks/audio/sfx.dart';
 
 class RaceGameState with ChangeNotifier {
   // Game state
@@ -129,13 +130,24 @@ class RaceGameState with ChangeNotifier {
   }
 
   void _resetTimerInternal({bool forceAccelerated = false}) {
-    // Keep the global tick interval based only on base speed (level & speedSetting).
-    // Enemy acceleration should only affect per-tick enemy movement (enemyMultiplier)
-    // and NOT shorten the global timer, so holding DROP keeps the same rhythm.
+    // Adjust the global tick when enemy acceleration is engaged to make the
+    // DROP button effect immediately visible. When accelerated, shorten the
+    // interval aggressively (about 35% of base), with sane clamps.
     _timer?.cancel();
     if (_playing && !_gameOver && !_isCrashing) {
-      final baseSpeed = _computeBaseSpeed();
-      final int interval = baseSpeed;
+      final int baseSpeed = _computeBaseSpeed();
+      int interval = baseSpeed;
+      if (forceAccelerated || _enemyAccelerating) {
+        // Make acceleration stronger at higher levels by decreasing the ratio
+        // linearly with level. Example mapping (level: ratio of base):
+        // 1 -> 0.50x, 5 -> 0.38x, 10 -> 0.23x.
+        final double baseRatio = 0.50;
+        final double perLevelDrop = 0.03; // stronger effect per level
+        final double rawRatio = baseRatio - perLevelDrop * (_level - 1);
+        final double ratio = rawRatio.clamp(0.15, 0.50);
+        final int accelerated = (baseSpeed * ratio).round();
+        interval = accelerated.clamp(15, 1000);
+      }
       _timer = Timer.periodic(Duration(milliseconds: interval), (timer) {
         gameLoop();
       });
@@ -368,7 +380,7 @@ class RaceGameState with ChangeNotifier {
     });
     // Play crash sound effect
     if (_soundOn) {
-      _sfxPlayer.play(AssetSource('sounds/bit_bomber1-89534.mp3'));
+      Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
     }
   }
 

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:bricks/audio/sfx.dart';
 
 enum Direction { up, down, left, right }
 
@@ -216,11 +217,11 @@ class SnakeGameState with ChangeNotifier {
     final int now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastSoundPlayMs < 80) return; // debounce audio spam
     _lastSoundPlayMs = now;
-    _soundEffectsPlayer.play(AssetSource('sounds/$soundPath'), volume: _volume / 3);
+    Sfx.play('sounds/$soundPath', volume: _volume / 3);
   }
 
   void stopAllSounds() {
-    _soundEffectsPlayer.stop();
+    try { _soundEffectsPlayer.stop(); } catch (_) {}
   }
 
   void _generateFood() {

@@ -21,6 +21,10 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
   bool _blinkHead = true; // State for snake head blinking
   Timer? _blinkTimer; // Timer for game over/start text blinking
   Timer? _headBlinkTimer; // Timer for snake head blinking
+  // Dedicated food blinking independent from head to avoid long invisibility
+  Timer? _foodBlinkTimer;
+  int _foodPulseTick = 0; // 0..9; duty cycle control
+  bool _foodVisible = true;
 
   @override
   void initState() {
@@ -28,6 +32,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
     gameState = Provider.of<SnakeGameState>(context, listen: false);
     gameState.addListener(_handleGameOver);
     _startHeadBlinking(); // Start head blinking immediately
+    _startFoodBlinking(); // Start food blinking with custom duty cycle
   }
 
   void _startHeadBlinking() {
@@ -35,6 +40,23 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
     _headBlinkTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
       setState(() {
         _blinkHead = !_blinkHead;
+      });
+    });
+  }
+
+  void _startFoodBlinking() {
+    _foodBlinkTimer?.cancel();
+    // 100ms tick; 70% ON, 30% OFF per 1s cycle
+    _foodBlinkTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (gameState.isPlaying && !gameState.isGameOver) {
+          _foodPulseTick = (_foodPulseTick + 1) % 10; // 0..9
+          _foodVisible = _foodPulseTick < 7; // 0..6 ON, 7..9 OFF
+        } else {
+          // When paused or not playing, keep food visible
+          _foodVisible = true;
+        }
       });
     });
   }
@@ -70,6 +92,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
   void dispose() {
     _blinkTimer?.cancel();
     _headBlinkTimer?.cancel(); // Cancel head blink timer on dispose
+    _foodBlinkTimer?.cancel();
     gameState.removeListener(_handleGameOver);
     super.dispose();
   }
@@ -113,7 +136,8 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                     food: gameState.food,
                     obstacles: gameState.obstacles,
                     blinkHead: _blinkHead && gameState.isPlaying,
-                    blinkFood: (_blinkHead && gameState.isPlaying),
+                    // Use independent food blinking: false => visible, true => hide
+                    blinkFood: !_foodVisible,
                   ),
                   child: gameState.isGameOver && _showGameOverText
                       ? Center(
@@ -367,6 +391,24 @@ class _SnakeGamePainter extends CustomPainter {
       canvas.drawRect(inner, on ? onPaint : offPaint);
     }
 
+    void drawCellColored(int col, int row, Color color) {
+      final Rect outer = cellContentRect(col, row);
+      final Paint borderPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = outerStrokeWidth;
+      final Paint fillPaint = Paint()..color = color;
+      canvas.drawRect(outer, borderPaint);
+
+      final double innerW = outer.width * innerSizeFactor;
+      final double innerH = outer.height * innerSizeFactor;
+      final double innerOffsetFactor = (1.0 - innerSizeFactor) / 2.0;
+      final double innerX = outer.left + outer.width * innerOffsetFactor;
+      final double innerY = outer.top + outer.height * innerOffsetFactor;
+      final Rect inner = Rect.fromLTWH(innerX, innerY, innerW, innerH);
+      canvas.drawRect(inner, fillPaint);
+    }
+
     // Draw all OFF
     for (int i = 0; i < SnakeGameState.rows; i++) {
       for (int j = 0; j < SnakeGameState.cols; j++) {
@@ -379,15 +421,22 @@ class _SnakeGamePainter extends CustomPainter {
     for (int i = 0; i < snake.length; i++) {
       final segment = snake[i];
       final bool isHead = i == 0;
-      final bool on = !(isHead && blinkHead);
-      drawCell(segment.x, segment.y, on);
+      final bool visible = !(isHead && blinkHead);
+      if (!visible) continue; // skip rendering head when blinking off
+      if (isHead) {
+        // Head in blue
+        drawCellColored(segment.x, segment.y, Colors.blue);
+      } else {
+        drawCell(segment.x, segment.y, true);
+      }
     }
 
-    // Draw food
+    // Draw food with independent blink control
     if (food != null) {
-      final bool showFood = !blinkFood; // blink: toggle visibility
+      final bool showFood = !blinkFood; // visible when blink flag is false
       if (showFood) {
-        drawCell(food!.x, food!.y, true);
+        // Food in red
+        drawCellColored(food!.x, food!.y, Colors.red);
       }
     }
 
