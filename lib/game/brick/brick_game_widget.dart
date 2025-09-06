@@ -114,8 +114,11 @@ class _BrickPainter extends CustomPainter {
     drawOn(gs.paddleX, py, const Color(0xFF1E88E5));
     drawOn(gs.paddleX + 1, py, const Color(0xFF1E88E5));
 
-    // Ball (red)
+    // Balls (red)
     drawOn(gs.ball.x, gs.ball.y, const Color(0xFFF44336));
+    if (gs.ball2 != null) {
+      drawOn(gs.ball2!.x, gs.ball2!.y, const Color(0xFFF44336));
+    }
 
     // UFO bonus (magenta)
     if (gs.ufo != null) {
@@ -134,6 +137,12 @@ class _BrickPainter extends CustomPainter {
           break;
         case PowerUpKind.life:
           c = const Color(0xFFFFC107); // amber
+          break;
+        case PowerUpKind.multi:
+          c = const Color(0xFF9C27B0); // purple
+          break;
+        case PowerUpKind.pierce:
+          c = const Color(0xFFB0BEC5); // grey-blue
           break;
       }
       drawOn(p.pos.x, p.pos.y, c);
@@ -194,6 +203,38 @@ class _BrickStats extends StatelessWidget {
               const SizedBox(height: 10),
               buildStatText('TIME'),
               buildStatNumber('${gs.elapsedSeconds ~/ 60}:${(gs.elapsedSeconds % 60).toString().padLeft(2, '0')}'),
+              const SizedBox(height: 8),
+              // Active effects badges
+              _effectsRow(gs),
+              const Spacer(),
+              // Volume + play/pause controls row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(gs.soundOn ? Icons.volume_up : Icons.volume_off, size: 12, color: LcdColors.pixelOn),
+                  const SizedBox(width: 6),
+                  Row(
+                    children: List.generate(3, (i) => Container(
+                          width: 4,
+                          height: 8,
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
+                          decoration: BoxDecoration(
+                            color: i < gs.volume ? LcdColors.pixelOn : LcdColors.pixelOn.withAlpha((255 * 0.3).round()),
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        )),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: gs.togglePlaying,
+                    child: Icon(
+                      gs.playing ? Icons.pause : Icons.play_arrow,
+                      size: 12,
+                      color: LcdColors.pixelOn,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ],
@@ -218,6 +259,32 @@ class _BrickStats extends StatelessWidget {
         ),
       );
     });
+  }
+
+  Widget _effectsRow(BrickGameState gs) {
+    final List<Widget> chips = [];
+    void addChip(String label) {
+      chips.add(Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          border: Border.all(color: LcdColors.pixelOn, width: 1),
+        ),
+        child: Text(label,
+            style: const TextStyle(
+              color: LcdColors.pixelOn,
+              fontFamily: 'Digital7',
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            )),
+      ));
+    }
+    if (gs.expandActive) addChip('EXP');
+    if (gs.slowActive) addChip('SLOW');
+    if (gs.pierceActive) addChip('PIER');
+    if (gs.multiActive) addChip('MULT');
+    if (chips.isEmpty) return const SizedBox(height: 0);
+    return Row(mainAxisAlignment: MainAxisAlignment.center, children: chips);
   }
 }
 

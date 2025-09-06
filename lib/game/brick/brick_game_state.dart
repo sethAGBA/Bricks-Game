@@ -25,6 +25,9 @@ class BrickGameState with ChangeNotifier {
   Point<int> _ball = const Point<int>(cols ~/ 2, rows - 3);
   int _dx = 1; // ball direction x: -1, 0, 1
   int _dy = -1; // ball direction y: -1 (up), 1 (down)
+  Point<int>? _ball2; // optional second ball
+  int _dx2 = -1;
+  int _dy2 = -1;
   bool _ballLaunched = false;
   final Set<Point<int>> _bricks = <Point<int>>{};
   // Bonus UFO
@@ -36,6 +39,8 @@ class BrickGameState with ChangeNotifier {
   bool _slowBall = false;
   int _slowUntilTick = 0;
   int _expandUntilTick = 0;
+  bool _pierceBall = false;
+  int _pierceUntilTick = 0;
 
   // Timers
   Timer? _loopTimer;
@@ -59,12 +64,17 @@ class BrickGameState with ChangeNotifier {
   int get volume => _volume;
   int get paddleX => _paddleX;
   Point<int> get ball => _ball;
+  Point<int>? get ball2 => _ball2;
   bool get ballLaunched => _ballLaunched;
   Set<Point<int>> get bricks => _bricks;
   int get gameOverAnimFrame => _gameOverAnimFrame;
   Point<int>? get ufo => _ufo;
   List<PowerUp> get powerUps => List.unmodifiable(_powerUps);
   int get paddleHalf => _paddleHalf;
+  bool get expandActive => _paddleHalf > 1;
+  bool get slowActive => _slowBall;
+  bool get pierceActive => _pierceBall;
+  bool get multiActive => _ball2 != null;
 
   void applyMenuSettings({required int level, required int speed}) {
     _initialLevel = level.clamp(1, 15);
@@ -99,6 +109,7 @@ class BrickGameState with ChangeNotifier {
     _ball = Point<int>(_paddleX, rows - 3);
     _dx = 1;
     _dy = -1;
+    _ball2 = null; _dx2 = -1; _dy2 = -1;
     _ballLaunched = false;
     _ufo = null;
     _ufoDir = 1;
@@ -216,6 +227,10 @@ class BrickGameState with ChangeNotifier {
       _slowBall = false;
       _slowUntilTick = 0;
     }
+    if (_pierceUntilTick > 0 && _tickCounter >= _pierceUntilTick) {
+      _pierceBall = false;
+      _pierceUntilTick = 0;
+    }
 
     // If slow effect active, move ball only every other tick
     if (_slowBall && (_tickCounter % 2 == 1)) {
@@ -256,8 +271,10 @@ class BrickGameState with ChangeNotifier {
     if (_bricks.contains(hit)) {
       _bricks.remove(hit);
       _score += 10;
-      _dy = -_dy; // simple reflect
-      ny = _ball.y + _dy; // move after bounce
+      if (!_pierceBall) {
+        _dy = -_dy; // reflect unless pierce
+        ny = _ball.y + _dy;
+      }
       if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
       _maybeSpawnPowerUp(hit);
     }
@@ -280,19 +297,56 @@ class BrickGameState with ChangeNotifier {
     // Move power-ups and check pickup
     _movePowerUps();
 
+    // Move second ball if present
+    if (_ball2 != null) {
+      int nx2 = _ball2!.x + _dx2;
+      int ny2 = _ball2!.y + _dy2;
+      if (nx2 < 0) { nx2 = 0; _dx2 = 1; _playBounce(); }
+      else if (nx2 >= cols) { nx2 = cols - 1; _dx2 = -1; _playBounce(); }
+      if (ny2 < 0) { ny2 = 0; _dy2 = 1; _playBounce(); }
+      final int py2 = rows - 2;
+      if (ny2 == py2 && (nx2 >= _paddleX - _paddleHalf && nx2 <= _paddleX + _paddleHalf) && _dy2 > 0) {
+        _dy2 = -1;
+        if (nx2 < _paddleX) _dx2 = -1; else if (nx2 > _paddleX) _dx2 = 1;
+        ny2 = py2 - 1;
+        _playBounce();
+      }
+      final hit2 = Point<int>(nx2, ny2);
+      if (_bricks.contains(hit2)) {
+        _bricks.remove(hit2);
+        _score += 10;
+        if (!_pierceBall) {
+          _dy2 = -_dy2;
+          ny2 = _ball2!.y + _dy2;
+        }
+        if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
+        _maybeSpawnPowerUp(hit2);
+      }
+      _ball2 = Point<int>(nx2, ny2);
+      if (_ufo != null && _ball2!.x == _ufo!.x && _ball2!.y == _ufo!.y) {
+        _score += 50; _ufo = null; _dy2 = -_dy2; if (_soundOn) Sfx.play('sounds/cartoon_16-74046.mp3', volume: _volume / 3);
+      }
+      if (_ball2!.y >= rows) { _ball2 = null; }
+    }
+
     // Lose life if ball falls below paddle
     if (_ball.y >= rows) {
-      _life--;
-      if (_life <= 0) {
-        _endGame();
+      // if second ball exists, drop primary only
+      if (_ball2 != null) {
+        _ball = _ball2!; _dx = _dx2; _dy = _dy2; _ball2 = null;
       } else {
-        _ballLaunched = false;
-        _ball = Point<int>(_paddleX, rows - 3);
-        _dx = 1; _dy = -1;
-        if (_soundOn) Sfx.play('sounds/8bit-ringtone-free-to-use-loopable-44702.mp3', volume: _volume / 3);
+        _life--;
+        if (_life <= 0) {
+          _endGame();
+        } else {
+          _ballLaunched = false;
+          _ball = Point<int>(_paddleX, rows - 3);
+          _dx = 1; _dy = -1; _ball2 = null;
+          if (_soundOn) Sfx.play('sounds/8bit-ringtone-free-to-use-loopable-44702.mp3', volume: _volume / 3);
+        }
+        notifyListeners();
+        return;
       }
-      notifyListeners();
-      return;
     }
 
     // Level up when no bricks remain
@@ -301,7 +355,7 @@ class BrickGameState with ChangeNotifier {
       _spawnBricks();
       _ballLaunched = false;
       _ball = Point<int>(_paddleX, rows - 3);
-      _dx = 1; _dy = -1;
+      _dx = 1; _dy = -1; _ball2 = null; _dx2 = -1; _dy2 = -1;
       _resetLoop();
     }
 
@@ -409,6 +463,18 @@ class BrickGameState with ChangeNotifier {
       case PowerUpKind.life:
         _life = (_life + 1).clamp(0, 9);
         break;
+      case PowerUpKind.multi:
+        // spawn a second ball if none exists, mirror horizontal direction
+        if (_ball2 == null) {
+          _ball2 = Point<int>(_ball.x, _ball.y);
+          _dx2 = (_dx == 0) ? 1 : -_dx;
+          _dy2 = _dy;
+        }
+        break;
+      case PowerUpKind.pierce:
+        _pierceBall = true;
+        _pierceUntilTick = _tickCounter + 200;
+        break;
     }
     if (_soundOn) Sfx.play('sounds/cartoon_16-74046.mp3', volume: _volume / 3);
   }
@@ -444,7 +510,7 @@ class BrickGameState with ChangeNotifier {
   }
 }
 
-enum PowerUpKind { expand, slow, life }
+enum PowerUpKind { expand, slow, life, multi, pierce }
 
 class PowerUp {
   Point<int> pos;
