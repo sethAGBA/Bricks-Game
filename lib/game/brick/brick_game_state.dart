@@ -47,6 +47,7 @@ class BrickGameState with ChangeNotifier {
   Timer? _secondsTimer;
   Timer? _gameOverAnimTimer;
   int _gameOverAnimFrame = 0;
+  int _tickMs = 350; // current loop interval ms for seconds conversion
 
   // Audio
   bool _soundOn = true;
@@ -75,6 +76,12 @@ class BrickGameState with ChangeNotifier {
   bool get slowActive => _slowBall;
   bool get pierceActive => _pierceBall;
   bool get multiActive => _ball2 != null;
+  int get expandRemainingTicks => _expandUntilTick > 0 ? (_expandUntilTick - _tickCounter).clamp(0, 9999) : 0;
+  int get slowRemainingTicks => _slowUntilTick > 0 ? (_slowUntilTick - _tickCounter).clamp(0, 9999) : 0;
+  int get pierceRemainingTicks => _pierceUntilTick > 0 ? (_pierceUntilTick - _tickCounter).clamp(0, 9999) : 0;
+  int get expandRemainingSeconds => (expandRemainingTicks * _tickMs / 1000).ceil();
+  int get slowRemainingSeconds => (slowRemainingTicks * _tickMs / 1000).ceil();
+  int get pierceRemainingSeconds => (pierceRemainingTicks * _tickMs / 1000).ceil();
 
   void applyMenuSettings({required int level, required int speed}) {
     _initialLevel = level.clamp(1, 15);
@@ -147,6 +154,7 @@ class BrickGameState with ChangeNotifier {
     if (!_playing || _gameOver) return;
     // base interval: faster with speed setting and level
     final int base = (350 - _speedSetting * 18 - _level * 10).clamp(60, 1200);
+    _tickMs = base;
     _loopTimer = Timer.periodic(Duration(milliseconds: base), (_) => _tick());
   }
 

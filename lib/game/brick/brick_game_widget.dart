@@ -279,9 +279,9 @@ class _BrickStats extends StatelessWidget {
             )),
       ));
     }
-    if (gs.expandActive) addChip('EXP');
-    if (gs.slowActive) addChip('SLOW');
-    if (gs.pierceActive) addChip('PIER');
+    if (gs.expandActive) addChip('EXP ${gs.expandRemainingSeconds}s');
+    if (gs.slowActive) addChip('SLOW ${gs.slowRemainingSeconds}s');
+    if (gs.pierceActive) addChip('PIER ${gs.pierceRemainingSeconds}s');
     if (gs.multiActive) addChip('MULT');
     if (chips.isEmpty) return const SizedBox(height: 0);
     return Row(mainAxisAlignment: MainAxisAlignment.center, children: chips);

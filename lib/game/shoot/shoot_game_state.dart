@@ -206,82 +206,27 @@ class ShootGameState with ChangeNotifier {
     _army.removeAll(deadAliens);
     _shots.removeAll(consumedShots);
 
-    // 3) Player shots vs enemy shots (cancel each other)
-    final Set<Point<int>> hitEnemyShots = {};
-    final Set<Point<int>> hitPlayerShots = {};
-    for (final es in _enemyShots) {
-      for (final ps in _shots) {
-        if (es.x == ps.x && es.y == ps.y) {
-          hitEnemyShots.add(es);
-          hitPlayerShots.add(ps);
-        }
-      }
-    }
-    _enemyShots.removeAll(hitEnemyShots);
-    _shots.removeAll(hitPlayerShots);
-
-    // 4) Move army horizontally; if at edge, move down and reverse
-    bool hitEdge = _army.any((a) => (a.x <= 0 && _armyDir < 0) || (a.x >= cols - 1 && _armyDir > 0));
-    if (hitEdge) {
-      // move down
-      final Set<Point<int>> moved = {};
-      for (final a in _army) {
-        moved.add(Point<int>(a.x, a.y + 1));
-      }
-      _army
-        ..clear()
-        ..addAll(moved);
-      _armyDir *= -1;
-    } else {
-      final Set<Point<int>> moved = {};
-      for (final a in _army) {
-        moved.add(Point<int>(a.x + _armyDir, a.y));
-      }
-      _army
-        ..clear()
-        ..addAll(moved);
+    // 3) Move army down and spawn new enemies on top row (Java-like)
+    final Set<Point<int>> moved = {};
+    for (final a in _army) { moved.add(Point<int>(a.x, a.y + 1)); }
+    _army
+      ..clear()
+      ..addAll(moved);
+    final Random rng = Random();
+    for (int x = 0; x < cols; x++) {
+      if (rng.nextBool()) { _army.add(Point<int>(x, 0)); }
     }
 
-    // 5) Enemy fire occasionally from bottom-most aliens
-    _maybeEnemyFire();
-
-    // 6) Move enemy shots down and check collisions with gun/bottom
-    final List<Point<int>> toRemoveEnemy = [];
-    final List<Point<int>> movedEnemy = [];
-    for (final s in _enemyShots) {
-      final ny = s.y + 1;
-      if (ny >= rows) {
-        toRemoveEnemy.add(s);
-      } else {
-        movedEnemy.add(Point<int>(s.x, ny));
-        toRemoveEnemy.add(s);
-      }
-    }
-    for (final s in toRemoveEnemy) { _enemyShots.remove(s); }
-    _enemyShots.addAll(movedEnemy);
-
-    // Collision with gun (gun occupies x-1,x,x+1 at row rows-2)
-    final int gy = rows - 2;
-    if (_enemyShots.any((p) => p.y == gy && (p.x == _gunX || p.x == _gunX - 1 || p.x == _gunX + 1))) {
-      _enemyShots.removeWhere((p) => p.y == gy && (p.x == _gunX || p.x == _gunX - 1 || p.x == _gunX + 1));
-      _onLifeLost();
-      notifyListeners();
-      return;
-    }
-
-    // 7) Check lose conditions: army reached player's row
-    if (_army.any((a) => a.y >= rows - 3)) {
+    // 4) Check lose conditions: army reached player's row
+    if (_army.any((a) => a.y >= rows - 1)) {
       _onLifeLost(resetArmy: true);
       notifyListeners();
       return;
     }
 
-    // 8) Level up
-    if (_army.isEmpty) {
-      _level++;
-      _spawnArmy();
-      _resetLoop();
-    }
+    // 5) Level up based on score
+    final int targetLevel = (_score ~/ 200) + 1;
+    if (targetLevel > _level) { _level = targetLevel; _resetLoop(); }
 
     // 9) Advance explosions frames and cull
     for (final e in _explosions) {
@@ -298,36 +243,7 @@ class ShootGameState with ChangeNotifier {
     notifyListeners();
   }
 
-  void _maybeEnemyFire() {
-    if (_army.isEmpty) return;
-    // Limit enemy shots concurrently based on level
-    final int maxEnemyShots = (2 + (_level / 3)).clamp(2, 7).toInt();
-    if (_enemyShots.length >= maxEnemyShots) return;
-
-    // Fire rate scales with level and tick cadence
-    final double baseProb = 0.06 + 0.015 * (_level - 1); // up to ~0.24
-    final Random rng = Random();
-    if (rng.nextDouble() > baseProb) return;
-
-    // Find bottom-most alien in a random column among occupied ones
-    final Map<int, int> bottomPerCol = {};
-    for (final a in _army) {
-      bottomPerCol.update(a.x, (y) => a.y > y ? a.y : y, ifAbsent: () => a.y);
-    }
-    if (bottomPerCol.isEmpty) return;
-    // Choose column with alternating parity pattern to create wave-like fire
-    final int parity = _tickCount % 2;
-    final List<int> colsList = bottomPerCol.keys.where((c) => (c % 2) == parity).toList();
-    final List<int> fallback = bottomPerCol.keys.toList();
-    final int col = (colsList.isNotEmpty ? colsList : fallback)[rng.nextInt((colsList.isNotEmpty ? colsList : fallback).length)];
-    final int y = bottomPerCol[col]!;
-    // Spawn shot below alien if space
-    final int sy = y + 1;
-    if (sy < rows - 1) {
-      _enemyShots.add(Point<int>(col, sy));
-      if (_soundOn) Sfx.play('sounds/gameboy-pluck-41265 (1).mp3', volume: _volume / 3);
-    }
-  }
+  void _maybeEnemyFire() {}
 
   void _onLifeLost({bool resetArmy = false}) {
     _life--;

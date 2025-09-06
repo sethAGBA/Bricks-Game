@@ -13,6 +13,8 @@ import 'package:bricks/screens/snake_game_screen.dart';
 import 'package:bricks/screens/coming_soon_game_screen.dart';
 import 'package:bricks/style/app_style.dart';
 import 'package:bricks/game/game_grid_painter.dart';
+import 'package:bricks/game/tanks/tanks_game_state.dart';
+import 'package:bricks/screens/tanks_game_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bricks/game/piece.dart';
@@ -24,7 +26,7 @@ class MenuGameScreen extends StatefulWidget {
   State<MenuGameScreen> createState() => _MenuGameScreenState();
 }
 
-enum GameKind { tetris, snake, racing, brick, shoot }
+enum GameKind { tetris, snake, racing, brick, shoot, tanks }
 
 class GameDef {
   final String title;
@@ -38,6 +40,7 @@ const List<GameDef> kGames = <GameDef>[
   GameDef('RACING', GameKind.racing),
   GameDef('BRICK', GameKind.brick),
   GameDef('SHOOT', GameKind.shoot),
+  GameDef('TANKS', GameKind.tanks),
 ];
 
 class _MenuGameScreenState extends State<MenuGameScreen> {
@@ -106,6 +109,21 @@ class _MenuGameScreenState extends State<MenuGameScreen> {
               return sh;
             },
             child: const ShootGameScreen(),
+          ),
+        ),
+      );
+    } else if (def.kind == GameKind.tanks) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider(
+            create: (_) {
+              final ts = TanksGameState();
+              ts.applyMenuSettings(level: _level, speed: _speed);
+              ts.loadHighScore();
+              return ts;
+            },
+            child: const TanksGameScreen(),
           ),
         ),
       );
@@ -562,6 +580,37 @@ class _PreviewBoard extends StatelessWidget {
           }
         }
         if (centerRow + 1 <= bottomMarginRows) grid[centerRow + 1][centerCol] = Tetromino.L;
+        break;
+      case GameKind.tanks:
+        hidePiece = true;
+        // walls left/right bands near center
+        for (int r = centerRow - 3; r <= centerRow + 1; r += 2) {
+          if (r >= topMarginRows && r <= bottomMarginRows) {
+            if (2 >= 0 && 2 < cols) grid[r][2] = Tetromino.O;
+            if (cols - 3 >= 0 && cols - 3 < cols) grid[r][cols - 3] = Tetromino.O;
+          }
+        }
+        // draw 3x3 tank masks using tetromino colors (player J=blue, enemy Z=red)
+        void drawTankMask(int tlx, int tly, List<int> mask, Tetromino t) {
+          for (int ry = 0; ry < 3; ry++) {
+            for (int rx = 0; rx < 3; rx++) {
+              if (((mask[ry] >> (2 - rx)) & 1) == 1) {
+                final int cx = tlx + rx;
+                final int cy = tly + ry;
+                if (cy >= topMarginRows && cy <= bottomMarginRows && cx >= 0 && cx < cols) {
+                  grid[cy][cx] = t;
+                }
+              }
+            }
+          }
+        }
+        // Player tank mask (UP): 010,111,101
+        drawTankMask(centerCol - 1, centerRow, [0x2, 0x7, 0x5], Tetromino.J);
+        // Enemy tanks on top band (RIGHT and LEFT masks for variety)
+        if (centerRow - 3 >= topMarginRows) {
+          drawTankMask(centerCol - 4, centerRow - 3, [0x6, 0x3, 0x6], Tetromino.Z);
+          drawTankMask(centerCol + 2, centerRow - 3, [0x3, 0x6, 0x3], Tetromino.Z);
+        }
         break;
     }
 

@@ -126,10 +126,8 @@ class _ShootPainter extends CustomPainter {
       canvas.drawRect(inner, onPaint);
     }
 
-    // Draw Army (aliens): purple
-    for (final a in gs.army) {
-      drawOn(a.x, a.y, const Color(0xFF9C27B0));
-    }
+    // Draw army (falling points): purple
+    for (final a in gs.army) { drawOn(a.x, a.y, const Color(0xFF9C27B0)); }
 
     // Draw player shots: red
     for (final s in gs.shots) {
@@ -140,12 +138,10 @@ class _ShootPainter extends CustomPainter {
       drawOn(s.x, s.y, const Color(0xFFFFA726));
     }
 
-    // Draw gun: 3-wide ship at bottom (blue), only when not fully ended
-    final int gy = ShootGameState.rows - 2;
+    // Draw gun: single pixel at bottom row (Java-like), only when not fully ended
+    final int gy = ShootGameState.rows - 1;
     if (!gs.gameOver || gs.gameOverAnimFrame < 6) {
-      drawOn(gs.gunX - 1, gy, const Color(0xFF1E88E5));
       drawOn(gs.gunX, gy, const Color(0xFF1E88E5));
-      drawOn(gs.gunX + 1, gy, const Color(0xFF1E88E5));
     }
 
     // Draw explosions (expanding rings)
