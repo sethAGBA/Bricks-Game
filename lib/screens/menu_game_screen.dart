@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 import 'package:bricks/game/game_state.dart';
 import 'package:bricks/game/race/race_game_state.dart';
+import 'package:bricks/game/shoot/shoot_game_state.dart';
 import 'package:bricks/game/snake/snake_game_state.dart';
 import 'package:bricks/screens/game_boy_screen.dart';
 import 'package:bricks/screens/race_game_screen.dart';
+import 'package:bricks/screens/shoot_game_screen.dart';
 import 'package:bricks/screens/tetris_game_screen.dart';
 import 'package:bricks/screens/snake_game_screen.dart';
 import 'package:bricks/screens/coming_soon_game_screen.dart';
@@ -87,6 +89,21 @@ class _MenuGameScreenState extends State<MenuGameScreen> {
               return rs;
             },
             child: const RaceGameScreen(),
+          ),
+        ),
+      );
+    } else if (def.kind == GameKind.shoot) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider(
+            create: (_) {
+              final sh = ShootGameState();
+              sh.applyMenuSettings(level: _level, speed: _speed);
+              sh.loadHighScore();
+              return sh;
+            },
+            child: const ShootGameScreen(),
           ),
         ),
       );

@@ -11,6 +11,7 @@ class RaceGameState with ChangeNotifier {
   int _score = 0;
   int _highScore = 0;
   int _level = 1;
+  int _initialLevel = 1;
   int _life = 4;
   bool _playing = false;
   bool _gameOver = false;
@@ -28,6 +29,8 @@ class RaceGameState with ChangeNotifier {
   bool _testModeNoRoadMove = false; // New flag for testing
   bool _trailBlinkOn = true; // Blink flag for visual trails/centers
   Timer? _trailBlinkTimer;
+  Timer? _gameOverAnimTimer;
+  int _gameOverAnimFrame = 0;
 
   late Car playerCar;
   late List<Car> otherCars;
@@ -62,6 +65,7 @@ class RaceGameState with ChangeNotifier {
   bool get isDecelerating => _isDecelerating; // New getter
   bool get enemyAccelerating => _enemyAccelerating;
   bool get trailBlinkOn => _trailBlinkOn;
+  int get gameOverAnimFrame => _gameOverAnimFrame;
 
   RaceGameState() {
     loadHighScore();
@@ -71,7 +75,8 @@ class RaceGameState with ChangeNotifier {
   }
 
   void applyMenuSettings({required int level, required int speed}) {
-    _level = level.clamp(1, 10);
+    _initialLevel = level.clamp(1, 10);
+    _level = _initialLevel;
     _speedSetting = speed.clamp(1, 10);
     notifyListeners();
   }
@@ -95,6 +100,7 @@ class RaceGameState with ChangeNotifier {
     _score = 0;
     _life = 4;
     _elapsedSeconds = 0;
+    _level = _initialLevel;
     _timer?.cancel();
     _gameSecondsTimer?.cancel();
 
@@ -400,6 +406,7 @@ class RaceGameState with ChangeNotifier {
       _gameSecondsTimer?.cancel();
   // Reset level to 1 on game over to return the player to the initial difficulty
   _level = 1;
+      _startGameOverAnim();
       if (_score > _highScore) {
         _highScore = _score;
         _saveHighScore();
@@ -604,6 +611,8 @@ class RaceGameState with ChangeNotifier {
       _timer?.cancel();
       _stopElapsedTimer();
       _stopTrailBlink();
+      _stopEngineMusic();
+      Sfx.stopAll();
     }
     notifyListeners();
   }
@@ -617,6 +626,25 @@ class RaceGameState with ChangeNotifier {
     } else {
       _stopEngineMusic();
     }
+  }
+
+  void stop() {
+    _playing = false;
+    _gameOver = false;
+    _isCrashing = false;
+    _crashAnimationFrame = 0;
+    _timer?.cancel();
+    _gameSecondsTimer?.cancel();
+    _stopEngineMusic();
+    Sfx.stopAll();
+    _score = 0;
+    _life = 4;
+    _elapsedSeconds = 0;
+    _level = _initialLevel;
+    playerCar = Car.init();
+    otherCars = [Car.generate()];
+    road = Road.init();
+    notifyListeners();
   }
 
   void setTestModeNoRoadMove(bool value) {
@@ -635,6 +663,19 @@ class RaceGameState with ChangeNotifier {
 
   void _stopElapsedTimer() {
     _gameSecondsTimer?.cancel();
+  }
+
+  void _startGameOverAnim() {
+    _gameOverAnimTimer?.cancel();
+    _gameOverAnimFrame = 0;
+    _gameOverAnimTimer = Timer.periodic(const Duration(milliseconds: 80), (t) {
+      if (!_gameOver) { t.cancel(); return; }
+      _gameOverAnimFrame++;
+      if (_gameOverAnimFrame > 24) {
+        t.cancel();
+      }
+      notifyListeners();
+    });
   }
 
   void _startTrailBlink() {
@@ -660,6 +701,7 @@ class RaceGameState with ChangeNotifier {
   _musicPlayer.dispose();
   _sfxPlayer.dispose();
     _stopTrailBlink();
+    _gameOverAnimTimer?.cancel();
     super.dispose();
   }
 }

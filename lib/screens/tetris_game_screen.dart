@@ -21,7 +21,7 @@ class TetrisGameScreen extends StatelessWidget {
       GameBoyScreen.btnSound: () => gameState.toggleSound(),
       GameBoyScreen.btnPause: () => gameState.togglePlaying(),
       GameBoyScreen.btnStart: () => gameState.startGame(),
-      GameBoyScreen.btnSettings: () => Navigator.pop(context),
+      GameBoyScreen.btnSettings: () { gameState.stop(); Navigator.pop(context); },
     };
     return GameBoyScreen(
       gameContent: BricksGameContent(),

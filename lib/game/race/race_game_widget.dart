@@ -383,6 +383,24 @@ class _RaceGamePainter extends CustomPainter {
       }
     }
 
+    // Overlay game-over rings if applicable
+    if (gameState.gameOver && gameState.gameOverAnimFrame > 0) {
+      final int f = gameState.gameOverAnimFrame;
+      final int rings = (f / 2).clamp(1, 12).toInt();
+      for (int r = 0; r < rings; r++) {
+        final int inset = r;
+        final Color col = r < 4 ? const Color(0xFFFFEB3B) : (r < 8 ? const Color(0xFFFF9800) : const Color(0xFFF44336));
+        for (int x = inset; x < RaceGameState.cols - inset; x++) {
+          _drawLcdCellColored(canvas: canvas, bounds: cellContentRect(x, inset), color: col);
+          _drawLcdCellColored(canvas: canvas, bounds: cellContentRect(x, RaceGameState.rows - 1 - inset), color: col);
+        }
+        for (int y = inset; y < RaceGameState.rows - inset; y++) {
+          _drawLcdCellColored(canvas: canvas, bounds: cellContentRect(inset, y), color: col);
+          _drawLcdCellColored(canvas: canvas, bounds: cellContentRect(RaceGameState.cols - 1 - inset, y), color: col);
+        }
+      }
+    }
+
     if (gameState.isCrashing) {
       // Improved explosion: expanding colored rings around approximate center
       Point<int> centerOf(List<Point<int>> pts) {

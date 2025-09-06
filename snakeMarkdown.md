@@ -20,3 +20,7 @@
        * Vous pourriez réduire le nombre de vies initiales (life = 4).
        * Ou, au lieu de réinitialiser le serpent après une collision, le jeu pourrait se terminer immédiatement, ou le serpent pourrait perdre une partie de sa
          longueur.
+
+  - Importe et branche les cartes Snake .map dans Flutter ?
+  - Ajoute l’animation de clear Tetris ?
+  - Ajuste finement l’accélération Race selon niveau/speed comme dans le Java ?

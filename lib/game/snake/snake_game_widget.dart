@@ -138,6 +138,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                     blinkHead: _blinkHead && gameState.isPlaying,
                     // Use independent food blinking: false => visible, true => hide
                     blinkFood: !_foodVisible,
+                    gameOverFrame: gameState.gameOverAnimFrame,
                   ),
                   child: gameState.isGameOver && _showGameOverText
                       ? Center(
@@ -350,6 +351,7 @@ class _SnakeGamePainter extends CustomPainter {
   final List<Point<int>> obstacles;
   final bool blinkHead;
   final bool blinkFood;
+  final int gameOverFrame;
 
   _SnakeGamePainter({
     required this.snake,
@@ -357,6 +359,7 @@ class _SnakeGamePainter extends CustomPainter {
     required this.obstacles,
     this.blinkHead = false,
     this.blinkFood = false,
+    this.gameOverFrame = 0,
   });
 
   @override
@@ -456,12 +459,27 @@ class _SnakeGamePainter extends CustomPainter {
     for (var obstacle in obstacles) {
       drawCell(obstacle.x, obstacle.y, true);
     }
+
+    // End-of-game rings overlay
+    if (gameOverFrame > 0) {
+      final int rings = (gameOverFrame / 2).clamp(1, 12).toInt();
+      for (int r = 0; r < rings; r++) {
+        for (int x = r; x < SnakeGameState.cols - r; x++) {
+          drawCell(x, r, true);
+          drawCell(x, SnakeGameState.rows - 1 - r, true);
+        }
+        for (int y = r; y < SnakeGameState.rows - r; y++) {
+          drawCell(r, y, true);
+          drawCell(SnakeGameState.cols - 1 - r, y, true);
+        }
+      }
+    }
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
     if (oldDelegate is _SnakeGamePainter) {
-      return oldDelegate.snake != snake || oldDelegate.food != food || oldDelegate.obstacles != obstacles || oldDelegate.blinkHead != blinkHead;
+      return oldDelegate.snake != snake || oldDelegate.food != food || oldDelegate.obstacles != obstacles || oldDelegate.blinkHead != blinkHead || (oldDelegate is _SnakeGamePainter && oldDelegate.gameOverFrame != gameOverFrame);
     }
     return true;
   }

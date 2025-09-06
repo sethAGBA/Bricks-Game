@@ -55,6 +55,7 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
 
   @override
   Widget build(BuildContext context) {
+    final gameState = Provider.of<GameState>(context, listen: false);
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: LcdColors.pixelOn, width: 3),
@@ -73,18 +74,20 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
                 decoration: BoxDecoration(
                   border: Border.all(color: LcdColors.pixelOn, width: 1),
                 ),
-                child: Selector<GameState, Tuple4<List<List<Tetromino?>>, Piece, bool, bool>>(
-                  selector: (_, gameState) => Tuple4(
+                child: Selector<GameState, Tuple5<List<List<Tetromino?>>, Piece, bool, bool, int>>(
+                  selector: (_, gameState) => Tuple5(
                     gameState.grid,
                     gameState.currentPiece,
                     gameState.gameOver,
                     gameState.isAnimatingLineClear,
+                    gameState.gameOverAnimFrame,
                   ),
                   builder: (context, data, child) {
                     final grid = data.item1;
                     final currentPiece = data.item2;
                     final gameOver = data.item3;
                     final isAnimatingLineClear = data.item4;
+                    final gameOverFrame = data.item5;
 
                     return LayoutBuilder(
                       builder: (context, constraints) {
@@ -109,6 +112,13 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
                                 ),
                               ),
                             ),
+                            // Game over rings overlay
+                            if (gameOver && gameOverFrame > 0)
+                              Positioned.fill(
+                                child: CustomPaint(
+                                  painter: _GameOverRingsPainter(rows: GameState.rows, cols: GameState.cols, frame: gameOverFrame),
+                                ),
+                              ),
                             if (gameState.isStartingGame && !gameOver)
                               Center(
                                 child: _StartBlinkText(),
@@ -258,7 +268,7 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
         buildStatNumber(lines.toString().padLeft(5, '0')),
         SizedBox(height: 1),
         buildStatText('Level'),
-        buildStatNumber(level.toString().padLeft(5, '0')),
+        buildStatNumber((math.max(level - 1, 0)).toString().padLeft(5, '0')),
         SizedBox(height: 1),
         buildStatText('HIGH SCORE'),
         buildStatNumber(highScore.toString().padLeft(5, '0')),
@@ -526,5 +536,63 @@ class _SidePanelGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _GameOverRingsPainter extends CustomPainter {
+  final int rows;
+  final int cols;
+  final int frame; // 1..24
+  const _GameOverRingsPainter({required this.rows, required this.cols, required this.frame});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double cellW = size.width / cols;
+    final double cellH = size.height / rows;
+    const double gapPx = GameGridPainter.gapPx;
+    const double outerStrokeWidth = GameGridPainter.outerStrokeWidth;
+    const double innerSizeFactor = GameGridPainter.innerSizeFactor;
+
+    Rect cellRect(int c, int r) => Rect.fromLTWH(
+          c * cellW + gapPx / 2,
+          r * cellH + gapPx / 2,
+          cellW - gapPx,
+          cellH - gapPx,
+        );
+
+    void drawOn(int c, int r, Color color) {
+      if (c < 0 || c >= cols || r < 0 || r >= rows) return;
+      final Rect outer = cellRect(c, r);
+      final Paint border = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = outerStrokeWidth;
+      final Paint fill = Paint()..color = Color.alphaBlend(LcdColors.background.withOpacity(0.2), color);
+      canvas.drawRect(outer, border);
+      final Rect inner = Rect.fromLTWH(
+        outer.left + outer.width * (1 - innerSizeFactor) / 2,
+        outer.top + outer.height * (1 - innerSizeFactor) / 2,
+        outer.width * innerSizeFactor,
+        outer.height * innerSizeFactor,
+      );
+      canvas.drawRect(inner, fill);
+    }
+
+    final int rings = (frame / 2).clamp(1, 12).toInt();
+    for (int r = 0; r < rings; r++) {
+      final int inset = r;
+      final Color col = r < 4 ? const Color(0xFFFFEB3B) : (r < 8 ? const Color(0xFFFF9800) : const Color(0xFFF44336));
+      for (int x = inset; x < cols - inset; x++) {
+        drawOn(x, inset, col);
+        drawOn(x, rows - 1 - inset, col);
+      }
+      for (int y = inset; y < rows - inset; y++) {
+        drawOn(inset, y, col);
+        drawOn(cols - 1 - inset, y, col);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GameOverRingsPainter old) => old.frame != frame || old.rows != rows || old.cols != cols;
 }
   

@@ -35,6 +35,7 @@ class SnakeGameState with ChangeNotifier {
   int score = 0;
   int highScore = 0;
   int level = 1;
+  int _initialLevel = 1;
   int life = 4; // Initial life
   int elapsedSeconds = 0;
   Timer? _timer;
@@ -48,6 +49,8 @@ class SnakeGameState with ChangeNotifier {
   int _volume = 2;
   bool _isDisposed = false; // Guard against post-dispose callbacks
   int _lastSoundPlayMs = 0; // Debounce for sound plays
+  Timer? _gameOverAnimTimer;
+  int _gameOverAnimFrame = 0;
 
   // Getters
   bool get soundOn => _soundOn;
@@ -55,6 +58,7 @@ class SnakeGameState with ChangeNotifier {
   bool get isAccelerating => _isAccelerating;
   bool get isStartingGame => _isStartingGame;
   Color get startBlinkColor => _startBlinkColor;
+  int get gameOverAnimFrame => _gameOverAnimFrame;
 
   SnakeGameState() {
     _initializeGame();
@@ -72,6 +76,7 @@ class SnakeGameState with ChangeNotifier {
   void applyMenuSettings({required int level, required int speed}) {
     final int clampedLevel = level.clamp(1, 15); // support up to 15 maps
     _speedSetting = speed.clamp(1, 10);
+    _initialLevel = clampedLevel;
     this.level = clampedLevel; // store level for map selection
     _currentSpeed = _applySpeedSetting(_initialSpeed, _speedSetting);
     notifyListeners();
@@ -157,9 +162,14 @@ class SnakeGameState with ChangeNotifier {
       print('SnakeGameState: startGame - already playing or starting, returning.');
       return;
     }
+    // Clear any lingering game-over animation before restarting
+    _gameOverAnimTimer?.cancel();
+    _gameOverAnimFrame = 0;
     stopAllSounds(); // Stop any lingering sounds before starting
     isPlaying = false; // Ensure game is not playing during animation
-    _initializeGame(); // Reset game state for a new game
+    // Reset game state for a new game
+    level = _initialLevel;
+    _initializeGame();
     _isStartingGame = true; // Set starting game flag AFTER reset
     playSound('cartoon_16-74046.mp3'); // Play start game sound
 
@@ -239,7 +249,27 @@ class SnakeGameState with ChangeNotifier {
       _timer?.cancel(); // Pause game
       _gameTimer?.cancel();
       stopAllSounds(); // Ensure any playing sounds are stopped when pausing
+      Sfx.stopAll();
     }
+    notifyListeners();
+  }
+
+  void stop() {
+    isPlaying = false;
+    isGameOver = false;
+    _timer?.cancel();
+    _gameTimer?.cancel();
+    _foodTimer?.cancel();
+    _startBlinkTimer?.cancel();
+    _gameOverAnimTimer?.cancel();
+    _gameOverAnimFrame = 0;
+    score = 0;
+    life = 4;
+    elapsedSeconds = 0;
+    level = _initialLevel;
+    _initializeGame();
+    stopAllSounds();
+    Sfx.stopAll();
     notifyListeners();
   }
 
@@ -255,7 +285,7 @@ class SnakeGameState with ChangeNotifier {
   void playSound(String soundPath) {
     if (!_soundOn || _isDisposed) return;
     final int now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastSoundPlayMs < 80) return; // debounce audio spam
+    if (now - _lastSoundPlayMs < 120) return; // debounce audio spam
     _lastSoundPlayMs = now;
     Sfx.play('sounds/$soundPath', volume: _volume / 3);
   }
@@ -383,6 +413,15 @@ class SnakeGameState with ChangeNotifier {
     _gameTimer?.cancel();
     _foodTimer?.cancel(); // Cancel food timer on game over
     stopAllSounds();
+    // Start end animation
+    _gameOverAnimTimer?.cancel();
+    _gameOverAnimFrame = 0;
+    _gameOverAnimTimer = Timer.periodic(const Duration(milliseconds: 80), (t) {
+      if (_isDisposed) { t.cancel(); return; }
+      _gameOverAnimFrame++;
+      notifyListeners();
+      if (_gameOverAnimFrame > 24) t.cancel();
+    });
     if (score > highScore) {
       highScore = score;
       _saveHighScore();
@@ -420,6 +459,7 @@ class SnakeGameState with ChangeNotifier {
     _gameTimer?.cancel();
     _foodTimer?.cancel(); // Cancel food timer on dispose
     _startBlinkTimer?.cancel();
+    _gameOverAnimTimer?.cancel();
     _soundEffectsPlayer.dispose();
     super.dispose();
   }

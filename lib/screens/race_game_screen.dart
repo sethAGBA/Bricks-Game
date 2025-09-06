@@ -21,7 +21,7 @@ class RaceGameScreen extends StatelessWidget {
       GameBoyScreen.btnSound: () => raceGameState.toggleSound(),
       GameBoyScreen.btnPause: () => raceGameState.togglePlaying(),
       GameBoyScreen.btnStart: () => raceGameState.startGame(),
-      GameBoyScreen.btnSettings: () => Navigator.pop(context),
+      GameBoyScreen.btnSettings: () { raceGameState.stop(); Navigator.pop(context); },
     };
 
     final Map<String, GameButtonCallback?> buttonReleaseCallbacks = {

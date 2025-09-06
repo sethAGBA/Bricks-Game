@@ -17,6 +17,7 @@ class GameState with ChangeNotifier {
   int _highScore = 0;
   int _lines = 0;
   int _level = 1;
+  int _initialLevel = 1;
   bool _playing = false;
   bool _gameOver = false;
   bool _isAnimatingLineClear = false;
@@ -31,6 +32,8 @@ class GameState with ChangeNotifier {
   int _lineClearBlinkCount = 0;
   Timer? _moveSoundDebounceTimer;
   Timer? _gameSecondsTimer; // Tracks real elapsed seconds
+  Timer? _gameOverAnimTimer;
+  int _gameOverAnimFrame = 0;
   int _speedSetting = 1; // 1..10 from menu
 
   // Game speed (milliseconds per tick)
@@ -61,6 +64,7 @@ class GameState with ChangeNotifier {
   int get highScore => _highScore;
   bool get isStartingGame => _isStartingGame;
   int get speedSetting => _speedSetting;
+  int get gameOverAnimFrame => _gameOverAnimFrame;
 
   GameState() {
     loadHighScore();
@@ -77,7 +81,8 @@ class GameState with ChangeNotifier {
   }
 
   void applyMenuSettings({required int level, required int speed}) {
-    _level = level.clamp(1, 10);
+    _initialLevel = level.clamp(1, 10);
+    _level = _initialLevel;
     _speedSetting = speed.clamp(1, 10);
     notifyListeners();
   }
@@ -100,7 +105,7 @@ class GameState with ChangeNotifier {
     _isStartingGame = true;
     _score = 0;
     _lines = 0;
-    _level = 1;
+    _level = _initialLevel;
     _elapsedSeconds = 0;
     _timer?.cancel();
     _gameSecondsTimer?.cancel();
@@ -165,6 +170,7 @@ class GameState with ChangeNotifier {
       _playing = false;
       _timer?.cancel();
       _stopElapsedTimer();
+      _startGameOverAnim();
       if (_score > _highScore) {
         _highScore = _score;
         _saveHighScore();
@@ -368,7 +374,28 @@ class GameState with ChangeNotifier {
       _startElapsedTimer();
     } else {
       _stopElapsedTimer();
+      stopAllSounds();
+      // Stop any transient SFX players
+      Sfx.stopAll();
     }
+    notifyListeners();
+  }
+
+  void stop() {
+    _playing = false;
+    _gameOver = false;
+    _isStartingGame = false;
+    _timer?.cancel();
+    _gameSecondsTimer?.cancel();
+    _score = 0;
+    _lines = 0;
+    _level = _initialLevel;
+    _elapsedSeconds = 0;
+    grid = List.generate(rows, (_) => List.filled(cols, null));
+    _currentPiece = _randomPiece();
+    _nextPiece = _randomPiece();
+    stopAllSounds();
+    Sfx.stopAll();
     notifyListeners();
   }
 
@@ -380,7 +407,7 @@ class GameState with ChangeNotifier {
 
   void playMoveSound() {
     _moveSoundDebounceTimer?.cancel();
-    _moveSoundDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+    _moveSoundDebounceTimer = Timer(const Duration(milliseconds: 120), () {
       if (_soundOn) {
         Sfx.play('sounds/gameboy-pluck-41265.mp3', volume: _volume / 3);
       }
@@ -431,12 +458,25 @@ class GameState with ChangeNotifier {
     _gameSecondsTimer = null;
   }
 
+  void _startGameOverAnim() {
+    _gameOverAnimTimer?.cancel();
+    _gameOverAnimFrame = 0;
+    _gameOverAnimTimer = Timer.periodic(const Duration(milliseconds: 80), (t) {
+      _gameOverAnimFrame++;
+      if (_gameOverAnimFrame > 24) {
+        t.cancel();
+      }
+      notifyListeners();
+    });
+  }
+
   @override
   void dispose() {
     _soundEffectsPlayer.dispose();
     _timer?.cancel();
     _moveSoundDebounceTimer?.cancel();
     _gameSecondsTimer?.cancel();
+    _gameOverAnimTimer?.cancel();
     _lineClearTimer?.cancel();
     super.dispose();
   }

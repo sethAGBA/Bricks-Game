@@ -20,7 +20,7 @@ class SnakeGameScreen extends StatelessWidget {
       GameBoyScreen.btnSound: () => snakeGameState.toggleSound(),
       GameBoyScreen.btnPause: () => snakeGameState.togglePlaying(),
       GameBoyScreen.btnStart: () => snakeGameState.startGame(),
-      GameBoyScreen.btnSettings: () => Navigator.pop(context),
+      GameBoyScreen.btnSettings: () { snakeGameState.stop(); Navigator.pop(context); },
     };
     return GameBoyScreen(
       gameContent: const Center(
