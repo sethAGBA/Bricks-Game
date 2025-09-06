@@ -36,6 +36,7 @@ class TanksGameState with ChangeNotifier {
   int _tick = 0;
   int _tickMs = 320;
   int _lastFireTick = -9999;
+  int _killsThisLevel = 0;
 
   // Audio
   bool _soundOn = true;
@@ -304,11 +305,9 @@ class TanksGameState with ChangeNotifier {
     _advanceEnemyBullets();
     _movePowerUps();
 
-    // Check level complete
+    // Maintain enemies if all cleared (no level up here; level progresses by kills)
     if (_enemies.isEmpty) {
-      _level++;
       _spawnEnemies();
-      _resetLoop();
     }
 
     if (_score > _highScore) {
@@ -369,6 +368,8 @@ class TanksGameState with ChangeNotifier {
         final enemy = _enemies.removeAt(hit);
         _maybeSpawnPowerUp(enemy.pos);
         _impacts.add(_Impact(enemy.pos, 0, 6));
+        // Track kill and immediately respawn from a corner near the kill
+        _onEnemyKilled(enemy.pos);
         remove.add(b);
         if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
         continue;
@@ -649,6 +650,35 @@ class TanksGameState with ChangeNotifier {
         break;
     }
     if (_soundOn) Sfx.play('sounds/cartoon_16-74046.mp3', volume: _volume / 3);
+  }
+
+  // Kill/level progression and immediate respawn logic
+  void _onEnemyKilled(Point<int> at) {
+    _killsThisLevel++;
+    _spawnEnemyAtCornerNear(at);
+    if (_killsThisLevel >= 20) {
+      _level++;
+      _killsThisLevel = 0;
+      _resetLoop();
+    }
+  }
+
+  void _spawnEnemyAtCornerNear(Point<int> at) {
+    // Choose the nearest corner to the kill position
+    final bool left = at.x < cols / 2;
+    final bool top = at.y < rows / 2;
+    final int cx = left ? 0 : cols - 3;
+    final int cy = top ? 0 : rows - 3;
+    final Point<int> corner = Point<int>(cx, cy);
+    final Dir dir = top ? Dir.down : Dir.up;
+    if (_canPlaceTankAt(corner, dir)) {
+      _enemies.add(Tank(corner, dir));
+      return;
+    }
+    // Fallback: try along the corresponding side
+    final int side = top ? 0 : 1; // 0=top, 1=bottom
+    final rnd = Random();
+    _trySpawnOnSide(side, rnd);
   }
 }
 
