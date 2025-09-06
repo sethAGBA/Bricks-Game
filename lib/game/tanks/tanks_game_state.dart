@@ -136,9 +136,17 @@ class TanksGameState with ChangeNotifier {
     final rnd = Random();
     final int count = 2 + (_level ~/ 2);
     int placed = 0;
-    while (placed < count && placed < 6) {
-      final p = Point<int>(rnd.nextInt(cols), 1 + rnd.nextInt(3));
-      if (_isEmpty(p)) {
+    int attempts = 0;
+    // Try to place up to 'count' enemies, ensuring the whole 3x3 tank fits in-bounds
+    // and doesn't collide with walls, player, or other enemies.
+    while (placed < count && placed < 6 && attempts < 200) {
+      attempts++;
+      // Choose a top-left within valid horizontal range so 3x3 fits: [0..cols-3]
+      final int x = rnd.nextInt(max(1, cols - 2));
+      // Spawn near the top rows (1..3) like before
+      final int y = 1 + rnd.nextInt(3);
+      final p = Point<int>(x, y);
+      if (_canPlaceTankAt(p, Dir.down)) {
         _enemies.add(Tank(p, Dir.down));
         placed++;
       }
@@ -218,7 +226,10 @@ class TanksGameState with ChangeNotifier {
           e.dir = Dir.values[rnd.nextInt(4)];
         }
         final np = _step(e.pos, e.dir);
-        if (_isEmpty(np)) e.pos = np;
+        // Move only if the full 3x3 footprint remains valid and in-bounds
+        if (_canPlaceTankAt(np, e.dir, ignore: e)) {
+          e.pos = np;
+        }
         // Enemy fire: if line-of-sight towards player (no wall blocking) fire in that dir
         final Dir? los = _lineOfSightDir(e.pos, _player.pos);
         if (los != null && rnd.nextDouble() < 0.5) {
