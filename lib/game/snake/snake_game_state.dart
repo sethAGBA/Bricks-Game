@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:bricks/audio/sfx.dart';
@@ -69,8 +70,9 @@ class SnakeGameState with ChangeNotifier {
   }
 
   void applyMenuSettings({required int level, required int speed}) {
-    level = level.clamp(1, 10);
+    final int clampedLevel = level.clamp(1, 15); // support up to 15 maps
     _speedSetting = speed.clamp(1, 10);
+    this.level = clampedLevel; // store level for map selection
     _currentSpeed = _applySpeedSetting(_initialSpeed, _speedSetting);
     notifyListeners();
   }
@@ -102,13 +104,51 @@ class SnakeGameState with ChangeNotifier {
     life = 4;
     elapsedSeconds = 0;
     _currentSpeed = _initialSpeed; // Initialize current speed
-    obstacles = []; // Initialize obstacles list
+    obstacles = []; // Initialize obstacles list; will be replaced by map if available
     _foodTimer?.cancel(); // Cancel any existing food timer
     _startBlinkTimer?.cancel(); // Cancel any existing start blink timer
     _generateFood();
-    _generateObstacles(); // Generate obstacles
+    // Try to load level-based map asynchronously; fallback keeps random-free board
+    _loadMapObstaclesForLevel(level).then((loaded) {
+      if (_isDisposed) return;
+      if (loaded != null) {
+        obstacles = loaded;
+        // If current food overlaps obstacles, re-generate
+        if (food != null && obstacles.contains(food)) {
+          _generateFood();
+        }
+        notifyListeners();
+      } else {
+        // Optional: generate a few random obstacles if no map
+        _generateObstacles();
+        notifyListeners();
+      }
+    });
     print('SnakeGameState: _initializeGame - isGameOver: $isGameOver, isPlaying: $isPlaying');
     notifyListeners();
+  }
+
+  Future<List<Point<int>>?> _loadMapObstaclesForLevel(int lvl) async {
+    try {
+      final int idx = ((lvl - 1).clamp(0, 15)).toInt();
+      final String path = 'assets/snake/${idx.toString().padLeft(2, '0')}.map';
+      final String data = await rootBundle.loadString(path);
+      final lines = data.split('\n').where((e) => e.isNotEmpty).toList();
+      if (lines.length != rows) return null;
+      final List<Point<int>> points = [];
+      for (int y = 0; y < rows; y++) {
+        final row = lines[y];
+        if (row.length < cols) return null;
+        for (int x = 0; x < cols; x++) {
+          if (row[x] == '1') {
+            points.add(Point<int>(x, y));
+          }
+        }
+      }
+      return points;
+    } catch (_) {
+      return null;
+    }
   }
 
   void startGame() {

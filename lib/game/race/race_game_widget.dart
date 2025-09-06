@@ -28,6 +28,29 @@ void _drawLcdCell({
   canvas.drawRect(inner, isOn ? onPaint : offPaint);
 }
 
+/// Colored variant of the LCD cell drawing for highlights (centers/trails).
+void _drawLcdCellColored({
+  required Canvas canvas,
+  required Rect bounds,
+  required Color color,
+  double innerSizeFactor = 0.6,
+}) {
+  final Paint border = Paint()
+    ..color = color
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.0;
+  final Color blended = Color.alphaBlend(LcdColors.background.withOpacity(0.2), color);
+  final Paint fill = Paint()..color = blended;
+  canvas.drawRect(bounds, border);
+  final double innerW = bounds.width * innerSizeFactor;
+  final double innerH = bounds.height * innerSizeFactor;
+  final double innerOffsetFactor = (1.0 - innerSizeFactor) / 2.0;
+  final double innerX = bounds.left + bounds.width * innerOffsetFactor;
+  final double innerY = bounds.top + bounds.height * innerOffsetFactor;
+  final Rect inner = Rect.fromLTWH(innerX, innerY, innerW, innerH);
+  canvas.drawRect(inner, fill);
+}
+
 class RaceGameWidget extends StatefulWidget {
   const RaceGameWidget({super.key});
 
@@ -97,11 +120,11 @@ class _RaceGameWidgetState extends State<RaceGameWidget> {
         buildStatText('LIFE'),
         LayoutBuilder(
           builder: (context, constraints) {
+            // Match decorative LCD cell size roughly
             final double baseCell = constraints.maxWidth / RaceGameState.cols;
-            final double cellSize = baseCell * 1.25;
-            final double height = cellSize;
-            final double width = min(constraints.maxWidth, gameState.life * cellSize);
-            return SizedBox(height: height, width: width, child: _buildLifeDisplay(gameState.life));
+            final double iconHeight = (baseCell * 1.0).clamp(18.0, 38.0);
+            final double width = constraints.maxWidth;
+            return SizedBox(height: iconHeight, width: width, child: _buildLifeDisplay(gameState.life));
           },
         ),
         SizedBox(height: 10),
@@ -160,43 +183,66 @@ class _LifeCellsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const int rows = 1;
-    final int cols = lifeCount.clamp(0, 10);
-
-    final double cellHeight = size.height;
-    final double cellWidth = cellHeight;
-
+    // Render exactly 4 LCD-style squares: ON for remaining lives, OFF otherwise
+    final int lives = lifeCount.clamp(0, 4);
     const double gapPx = 1.0;
     const double outerStrokeWidth = 1.0;
     const double innerSizeFactor = 0.6;
-
-    final Paint onPaint = Paint()..color = LcdColors.pixelOn;
-    final Paint borderPaintOn = Paint()
-      ..color = LcdColors.pixelOn
+    final Paint offPaint = Paint()..color = LcdColors.pixelOff;
+    final Paint borderOff = Paint()
+      ..color = LcdColors.pixelOff
       ..style = PaintingStyle.stroke
       ..strokeWidth = outerStrokeWidth;
 
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = LcdColors.background);
 
-    Rect contentRect(int c, int r) => Rect.fromLTWH(
-          c * cellWidth + gapPx / 2,
-          r * cellHeight + gapPx / 2,
-          cellWidth - gapPx,
-          cellHeight - gapPx,
-        );
+    final int slots = 4;
+    final double slotW = size.width / slots;
+    final double side = (min(slotW, size.height) - gapPx);
 
-    final int maxCols = size.width ~/ cellWidth;
-    final int toDraw = min(cols, maxCols);
-    for (int c = 0; c < toDraw; c++) {
-      _drawLcdCell(
-        canvas: canvas,
-        bounds: contentRect(c, 0),
-        isOn: true, // Les cellules de vie sont toujours "allumées"
-        onPaint: onPaint,
-        offPaint: onPaint, // Non utilisé, mais requis par la fonction
-        borderPaintOn: borderPaintOn,
-        borderPaintOff: borderPaintOn, // Non utilisé
+    Rect squareRect(double x, double y) => Rect.fromLTWH(x + gapPx / 2, y + gapPx / 2, side, side);
+
+    void drawOffRect(Rect r) {
+      canvas.drawRect(r, borderOff);
+      final double innerW = r.width * innerSizeFactor;
+      final double innerH = r.height * innerSizeFactor;
+      final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+      final Rect inner = Rect.fromLTWH(
+        r.left + r.width * innerOffset,
+        r.top + r.height * innerOffset,
+        innerW,
+        innerH,
       );
+      canvas.drawRect(inner, offPaint);
+    }
+
+    void drawOnRect(Rect r) {
+      final Paint borderOn = Paint()
+        ..color = LcdColors.pixelOn
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = outerStrokeWidth;
+      final Paint onPaint = Paint()..color = LcdColors.pixelOn;
+      canvas.drawRect(r, borderOn);
+      final double innerW = r.width * innerSizeFactor;
+      final double innerH = r.height * innerSizeFactor;
+      final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+      final Rect inner = Rect.fromLTWH(
+        r.left + r.width * innerOffset,
+        r.top + r.height * innerOffset,
+        innerW,
+        innerH,
+      );
+      canvas.drawRect(inner, onPaint);
+    }
+
+    for (int i = 0; i < slots; i++) {
+      final double ox = i * slotW + (slotW - side - gapPx) / 2;
+      final double oy = (size.height - side - gapPx) / 2;
+      final Rect r = squareRect(ox, oy);
+      drawOffRect(r);
+      if (i < lives) {
+        drawOnRect(r);
+      }
     }
   }
 
@@ -290,33 +336,94 @@ class _RaceGamePainter extends CustomPainter {
       }
     }
 
+    // 5. Highlights: single center point between the "wings" for player and enemies
+    Point<int> nearestToCentroid(List<Point<int>> pts) {
+      double sx = 0, sy = 0;
+      for (final p in pts) { sx += p.x; sy += p.y; }
+      final double cx = sx / pts.length;
+      final double cy = sy / pts.length;
+      Point<int> best = pts.first;
+      double bestD = double.infinity;
+      for (final p in pts) {
+        final double dx = p.x - cx;
+        final double dy = p.y - cy;
+        final double d2 = dx * dx + dy * dy;
+        if (d2 < bestD) { bestD = d2; best = p; }
+      }
+      return best;
+    }
+
+    // Player center point (blue). Blink while accelerating.
+    final bool drawPlayerCenter = !gameState.isAccelerating || gameState.trailBlinkOn;
+    if (drawPlayerCenter) {
+      final pc = nearestToCentroid(gameState.playerCar.points);
+      final int nx = pc.x;
+      final int ny = pc.y - 1; // the tile just above the center
+      if (ny >= 0 && ny < RaceGameState.rows && nx >= 0 && nx < RaceGameState.cols) {
+        _drawLcdCellColored(
+          canvas: canvas,
+          bounds: cellContentRect(nx, ny),
+          color: const Color(0xFF1E88E5),
+        );
+      }
+    }
+
+    // Enemy single center point (red)
+    for (final car in gameState.otherCars) {
+      if (car.points.isEmpty) continue;
+      final c = nearestToCentroid(car.points);
+      final int ex = c.x;
+      final int ey = c.y - 1; // highlight tile just above the center
+      if (ey >= 0 && ey < RaceGameState.rows && ex >= 0 && ex < RaceGameState.cols) {
+        _drawLcdCellColored(
+          canvas: canvas,
+          bounds: cellContentRect(ex, ey),
+          color: const Color(0xFFE53935),
+        );
+      }
+    }
+
     if (gameState.isCrashing) {
-      final crashShapes = [
-        // Frame 0: single dot
-        [Point(0, 0)],
-        // Frame 1: cross
-        [Point(-1, 0), Point(0, 0), Point(1, 0), Point(0, -1), Point(0, 1)],
-        // Frame 2: expanding cross
-        [Point(-2, 0), Point(-1, 0), Point(0, 0), Point(1, 0), Point(2, 0),
-         Point(0, -2), Point(0, -1), Point(0, 1), Point(0, 2)],
-      ];
+      // Improved explosion: expanding colored rings around approximate center
+      Point<int> centerOf(List<Point<int>> pts) {
+        double sx = 0, sy = 0;
+        for (final p in pts) { sx += p.x; sy += p.y; }
+        return Point((sx / pts.length).round(), (sy / pts.length).round());
+      }
 
-      final currentFrame = gameState.crashAnimationFrame;
-      if (currentFrame < crashShapes.length) {
-        final crashPoints = crashShapes[currentFrame];
-        final playerCarCenter = gameState.playerCar.points.first; // Approximate center
+      final center = centerOf(gameState.playerCar.points);
+      final int f = gameState.crashAnimationFrame; // 0..animationFrames
+      final int maxRing = 5; // explosion radius in tiles
+      final int ring = f.clamp(0, maxRing);
 
-        for (final point in crashPoints) {
-          final displayX = playerCarCenter.x + point.x;
-          final displayY = playerCarCenter.y + point.y;
-          if (displayX >= 0 && displayX < RaceGameState.cols &&
-              displayY >= 0 && displayY < RaceGameState.rows) {
-            _drawLcdCell(
-              canvas: canvas,
-              bounds: cellContentRect(displayX, displayY),
-              isOn: true,
-              onPaint: onPaint, offPaint: offPaint, borderPaintOn: borderPaintOn, borderPaintOff: borderPaintOff,
-            );
+      // Draw all rings up to current ring for a fuller explosion effect
+      for (int r = 0; r <= ring; r++) {
+        // Choose color by ring: hot center (yellow) → orange → red
+        Color col;
+        if (r <= 1) {
+          col = const Color(0xFFFFEB3B); // yellow
+        } else if (r <= 3) {
+          col = const Color(0xFFFF9800); // orange
+        } else {
+          col = const Color(0xFFF44336); // red
+        }
+
+        // Generate Chebyshev ring (square ring), sample the perimeter
+        for (int dx = -r; dx <= r; dx++) {
+          for (int dy = -r; dy <= r; dy++) {
+            final bool onPerimeter = (dx.abs() == r || dy.abs() == r);
+            if (!onPerimeter) continue;
+            // Downsample to avoid filling every tile at large r
+            if (r >= 3 && ((dx + dy) % 2 != 0)) continue;
+            final int x = center.x + dx;
+            final int y = center.y + dy;
+            if (x >= 0 && x < RaceGameState.cols && y >= 0 && y < RaceGameState.rows) {
+              _drawLcdCellColored(
+                canvas: canvas,
+                bounds: cellContentRect(x, y),
+                color: col,
+              );
+            }
           }
         }
       }

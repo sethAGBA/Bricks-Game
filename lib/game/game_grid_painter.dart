@@ -28,12 +28,7 @@ class GameGridPainter extends CustomPainter {
     final Paint backgroundPaint = Paint()..color = lcdBackground;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
 
-    final Paint onPaint = Paint()..color = LcdColors.pixelOn;
     final Paint offPaint = Paint()..color = LcdColors.pixelOff;
-    final Paint borderPaintOn = Paint()
-      ..color = LcdColors.pixelOn
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = outerStrokeWidth;
     final Paint borderPaintOff = Paint()
       ..color = LcdColors.pixelOff
       ..style = PaintingStyle.stroke
@@ -47,33 +42,56 @@ class GameGridPainter extends CustomPainter {
       return Rect.fromLTWH(x, y, w, h);
     }
 
-    void drawCell(int col, int row, bool on) {
+    void drawOffCell(int col, int row) {
       final Rect outer = cellContentRect(col, row);
-      // outer border
-      canvas.drawRect(outer, on ? borderPaintOn : borderPaintOff);
-
-      // inner square centered
+      canvas.drawRect(outer, borderPaintOff);
       final double innerW = outer.width * innerSizeFactor;
       final double innerH = outer.height * innerSizeFactor;
       final double innerOffsetFactor = (1.0 - innerSizeFactor) / 2.0;
-      final double innerX = outer.left + outer.width * innerOffsetFactor;
-      final double innerY = outer.top + outer.height * innerOffsetFactor;
-      final Rect inner = Rect.fromLTWH(innerX, innerY, innerW, innerH);
-      canvas.drawRect(inner, on ? onPaint : offPaint);
+      final Rect inner = Rect.fromLTWH(
+        outer.left + outer.width * innerOffsetFactor,
+        outer.top + outer.height * innerOffsetFactor,
+        innerW,
+        innerH,
+      );
+      canvas.drawRect(inner, offPaint);
+    }
+
+    void drawOnCell(int col, int row, Color color) {
+      final Rect outer = cellContentRect(col, row);
+      final Paint borderPaintOn = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = outerStrokeWidth;
+      // Slightly blend toward LCD background to keep vivid yet readable
+      final Color blendedFill = Color.alphaBlend(LcdColors.background.withOpacity(0.20), color);
+      final Paint onPaint = Paint()..color = blendedFill;
+      canvas.drawRect(outer, borderPaintOn);
+      final double innerW = outer.width * innerSizeFactor;
+      final double innerH = outer.height * innerSizeFactor;
+      final double innerOffsetFactor = (1.0 - innerSizeFactor) / 2.0;
+      final Rect inner = Rect.fromLTWH(
+        outer.left + outer.width * innerOffsetFactor,
+        outer.top + outer.height * innerOffsetFactor,
+        innerW,
+        innerH,
+      );
+      canvas.drawRect(inner, onPaint);
     }
 
     // First, draw all cells in OFF state
     for (int row = 0; row < GameState.rows; row++) {
       for (int col = 0; col < GameState.cols; col++) {
-        drawCell(col, row, false);
+        drawOffCell(col, row);
       }
     }
 
     // Then overlay locked ON cells
     for (int row = 0; row < GameState.rows; row++) {
       for (int col = 0; col < GameState.cols; col++) {
-        if (grid[row][col] != null) {
-          drawCell(col, row, true);
+        final tetro = grid[row][col];
+        if (tetro != null) {
+          drawOnCell(col, row, TetrominoPalette.colorFor(tetro));
         }
       }
     }
@@ -88,7 +106,7 @@ class GameGridPainter extends CustomPainter {
 
             if (pixelRow >= 0 && pixelRow < GameState.rows &&
                 pixelCol >= 0 && pixelCol < GameState.cols) {
-              drawCell(pixelCol, pixelRow, true);
+              drawOnCell(pixelCol, pixelRow, TetrominoPalette.colorFor(currentPiece.type));
             }
           }
         }

@@ -19,7 +19,7 @@ class GameState with ChangeNotifier {
   int _level = 1;
   bool _playing = false;
   bool _gameOver = false;
-  final bool _isAnimatingLineClear = false;
+  bool _isAnimatingLineClear = false;
   final List<int> _linesBeingCleared = [];
   VoidCallback? onGameOver;
   int _elapsedSeconds = 0;
@@ -27,6 +27,8 @@ class GameState with ChangeNotifier {
   late Piece _currentPiece;
   late Piece _nextPiece;
   Timer? _timer; // Make timer nullable
+  Timer? _lineClearTimer;
+  int _lineClearBlinkCount = 0;
   Timer? _moveSoundDebounceTimer;
   Timer? _gameSecondsTimer; // Tracks real elapsed seconds
   int _speedSetting = 1; // 1..10 from menu
@@ -265,58 +267,97 @@ class GameState with ChangeNotifier {
         }
       }
     }
-    _clearLines();
+    _afterPieceLocked();
+  }
+
+  void _afterPieceLocked() {
+    // Detect full rows
+    final List<int> full = [];
+    for (int i = 0; i < rows; i++) {
+      if (!grid[i].contains(null)) full.add(i);
+    }
+
+    if (full.isEmpty) {
+      _newPiece();
+      notifyListeners();
+      return;
+    }
+
+    // Animate line clear by blinking rows before final removal
+    _isAnimatingLineClear = true;
+    _linesBeingCleared
+      ..clear()
+      ..addAll(full);
+    playClearSound();
+    _lineClearBlinkCount = 0;
+
+    _lineClearTimer?.cancel();
+    _lineClearTimer = Timer.periodic(const Duration(milliseconds: 120), (t) {
+      _lineClearBlinkCount++;
+      final bool on = _lineClearBlinkCount % 2 == 0;
+      for (final r in _linesBeingCleared) {
+        for (int c = 0; c < cols; c++) {
+          grid[r][c] = on ? Tetromino.I : null; // toggle visibility
+        }
+      }
+      notifyListeners();
+
+      if (_lineClearBlinkCount >= 6) { // ~3 flashes
+        t.cancel();
+        _finalizeClear(full.length);
+      }
+    });
+  }
+
+  void _finalizeClear(int linesCleared) {
+    // Build new grid without the cleared rows, compacting down
+    List<List<Tetromino?>> newGrid = List.generate(rows, (_) => List.filled(cols, null));
+    int newGridRow = rows - 1;
+    for (int i = rows - 1; i >= 0; i--) {
+      if (_linesBeingCleared.contains(i)) continue;
+      newGrid[newGridRow] = grid[i];
+      newGridRow--;
+    }
+    grid = newGrid;
+
+    // scoring
+    _lines += linesCleared;
+    int points = 0;
+    switch (linesCleared) {
+      case 1:
+        points = 100;
+        break;
+      case 2:
+        points = 300;
+        break;
+      case 3:
+        points = 500;
+        break;
+      case 4:
+        points = 800;
+        break;
+      default:
+        points = 100 * linesCleared; // fallback
+    }
+    _score += points * _level;
+
+    final newLevel = (_lines ~/ 10) + 1;
+    final bool leveledUp = newLevel > _level;
+    if (leveledUp) {
+      _level = newLevel;
+    }
+
+    _isAnimatingLineClear = false;
+    _linesBeingCleared.clear();
     _newPiece();
-    // notifyListeners(); // Moved to _clearLines or handled by subsequent calls
-    // If _clearLines doesn't notify, we need to notify here
-    // However, _newPiece() might also trigger a game over, which notifies.
-    // For now, keep it here, but consider if it's truly redundant.
+    if (leveledUp) {
+      _resetTimer();
+    }
     notifyListeners();
   }
 
   void _clearLines() {
-    int linesCleared = 0;
-    List<List<Tetromino?>> newGrid = List.generate(rows, (_) => List.filled(cols, null));
-    int newGridRow = rows - 1;
-
-    for (int i = rows - 1; i >= 0; i--) {
-      if (!grid[i].contains(null)) {
-        linesCleared++;
-      } else {
-        newGrid[newGridRow] = grid[i];
-        newGridRow--;
-      }
-    }
-    grid = newGrid;
-
-    if (linesCleared > 0) {
-      playClearSound();
-      _lines += linesCleared;
-      int points = 0;
-      switch (linesCleared) {
-        case 1:
-          points = 100;
-          break;
-        case 2:
-          points = 300;
-          break;
-        case 3:
-          points = 500;
-          break;
-        case 4:
-          points = 800;
-          break;
-      }
-      _score += points * _level;
-
-      // Check for level up
-      int newLevel = (_lines ~/ 10) + 1;
-      if (newLevel > _level) {
-        _level = newLevel;
-        // Increase speed
-        _resetTimer();
-      }
-    }
+    // Legacy no-op retained for compatibility; line clear now animated.
   }
 
   void togglePlaying() {
@@ -396,6 +437,7 @@ class GameState with ChangeNotifier {
     _timer?.cancel();
     _moveSoundDebounceTimer?.cancel();
     _gameSecondsTimer?.cancel();
+    _lineClearTimer?.cancel();
     super.dispose();
   }
 }

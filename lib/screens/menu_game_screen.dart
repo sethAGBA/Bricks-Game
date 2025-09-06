@@ -12,7 +12,6 @@ import 'package:bricks/game/game_grid_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bricks/game/piece.dart';
-import 'package:bricks/widgets/game_stats_widgets.dart';
 
 class MenuGameScreen extends StatefulWidget {
   const MenuGameScreen({super.key});
@@ -229,7 +228,7 @@ class _MenuPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = outerStrokeWidth;
 
-    Rect cellRect(int c, int r) => Rect.fromLTWH(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+  // helper Rects
     Rect contentRect(int c, int r) => Rect.fromLTWH(
         c * cellWidth + gapPx / 2, r * cellHeight + gapPx / 2, cellWidth - gapPx, cellHeight - gapPx);
 
@@ -306,58 +305,82 @@ class _MenuContent extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Main 20x10 menu board fills available height
+            // Left: 20x10 menu board as before
             Expanded(
-              flex: 2,
+              flex: 1,
               child: SizedBox.expand(
                 child: CustomPaint(painter: _MenuPainter(value)),
               ),
             ),
-            // Divider
-            Container(width: 2, color: LcdColors.pixelOn, margin: const EdgeInsets.symmetric(horizontal: 4)),
-            // Preview panel
+            // Divider (center)
+            Container(width: 2, color: LcdColors.pixelOn, margin: const EdgeInsets.symmetric(horizontal: 8)),
+            // Right: preview fills the remaining LCD area, full ON/OFF cells
             Expanded(
               flex: 1,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _MenuSidePanelGridPainter(),
+              child: Container(
+                color: LcdColors.background,
+                child: Stack(
+                  children: [
+                    // Full-size preview grid retains its proportions
+                    Positioned.fill(
+                      child: _PreviewBoard(kind: kGames[value % kGames.length].kind),
                     ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 4),
-                  Text(
-                    kGames[value % kGames.length].title,
-                        style: const TextStyle(
-                          color: LcdColors.pixelOn,
-                          fontFamily: 'Digital7',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                    // Title overlay at top, drawn over the grid (does not shrink it)
+                    Positioned(
+                      top: 4,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Text(
+                          kGames[value % kGames.length].title,
+                          style: const TextStyle(
+                            color: LcdColors.pixelOn,
+                            fontFamily: 'Digital7',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Expanded(
-                        child: SizedBox.expand(
-                          child: _PreviewBoard(kind: kGames[value % kGames.length].kind),
-                        ),
+                    ),
+                    // Bottom overlays: level/speed + hints
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 4,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _lcdStat(label: 'LEVEL', value: level),
+                              _lcdStat(label: 'SPEED', value: speed),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'SELECT: START/ROTATE',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: LcdColors.pixelOn,
+                              fontFamily: 'Digital7',
+                              fontSize: 10,
+                            ),
+                          ),
+                          const Text(
+                            '← → CHANGE  ↑ SPEED  ↓ LEVEL',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: LcdColors.pixelOn,
+                              fontFamily: 'Digital7',
+                              fontSize: 9,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
-                      _lcdStat(label: 'LEVEL', value: level),
-                      const SizedBox(height: 2),
-                      _lcdStat(label: 'SPEED', value: speed),
-                      const SizedBox(height: 4),
-                      const Text('SELECT: START/ROTATE',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: LcdColors.pixelOn, fontFamily: 'Digital7', fontSize: 10)),
-                      const Text('← → CHANGE  ↑ SPEED  ↓ LEVEL',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: LcdColors.pixelOn, fontFamily: 'Digital7', fontSize: 9)),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -393,51 +416,132 @@ class _PreviewBoard extends StatelessWidget {
     Piece piece = Piece(type: Tetromino.T, position: const Point(4, 2));
     bool hidePiece = false;
 
+  // old demo patterns removed; draw content below in a single centered pass
+    // Keep the preview grid full-size (fills the panel). Only center the
+    // demo content (pieces / demo blocks) inside the grid so overlays
+    // (title / hints) are not masked.
+
+  // Define a safe vertical band inside the full grid so demo content
+  // never touches the top title or bottom hints. Increase margins to 25%.
+  final int topMarginRows = (rows * 0.25).toInt();
+  final int bottomMarginRows = rows - topMarginRows - 1;
+  // Add a small downward bias so the visual center sits below the title
+  final int verticalBias = 2;
+  final int centerRow = math.max(topMarginRows, math.min((topMarginRows + bottomMarginRows) ~/ 2 + verticalBias, bottomMarginRows));
+  final int centerCol = cols ~/ 2;
+
+  // place the current piece roughly at the visual center of the safe band
+  final int pieceHeight = piece.shape.length;
+  final int pieceWidth = piece.shape[0].length;
+    piece = Piece(
+      type: piece.type,
+      position: Point((centerCol - pieceWidth ~/ 2), (centerRow - pieceHeight ~/ 2) + 1),
+    );
+
     switch (kind) {
       case GameKind.tetris:
+        // piece already centered
         break;
       case GameKind.snake:
         hidePiece = true;
-        grid[(rows * 0.45).toInt()][(cols * 0.50).toInt()] = Tetromino.I;
-        grid[(rows * 0.45).toInt()][(cols * 0.45).toInt()] = Tetromino.I;
-        grid[(rows * 0.45).toInt()][(cols * 0.40).toInt()] = Tetromino.I;
-        grid[(rows * 0.45).toInt()][(cols * 0.35).toInt()] = Tetromino.I;
+        for (int i = 0; i < 4; i++) {
+          final int c = centerCol - i;
+          if (centerRow >= 0 && centerRow < rows && c >= 0 && c < cols) grid[centerRow][c] = Tetromino.I;
+        }
         break;
       case GameKind.racing:
         hidePiece = true;
-        for (int r = 0; r < rows; r += 2) {
-          grid[r][2] = Tetromino.I;
-          grid[r][7] = Tetromino.I;
+
+        // Use the in-game Car shape so preview matches actual vehicle.
+        // Instantiate a template car, compute its centroid, then translate
+        // to the preview center within the safe band.
+        final carTemplate = Car.init();
+        if (carTemplate.points.isNotEmpty) {
+          double sx = 0, sy = 0;
+          for (final p in carTemplate.points) {
+            sx += p.x;
+            sy += p.y;
+          }
+          final double avgX = sx / carTemplate.points.length;
+          final double avgY = sy / carTemplate.points.length;
+          final int shiftX = centerCol - avgX.round();
+          final int shiftY = centerRow - avgY.round();
+
+          for (final p in carTemplate.points) {
+            final int nx = p.x + shiftX;
+            final int ny = p.y + shiftY;
+            if (ny >= topMarginRows && ny <= bottomMarginRows && nx >= 0 && nx < cols) {
+              grid[ny][nx] = Tetromino.O; // car body using O color
+            }
+          }
         }
-        grid[rows - 4][4] = Tetromino.O;
-        grid[rows - 3][4] = Tetromino.O;
+
+        // Decorative elements: three small markers on the left and right of the car
+        final int leftDecorCol = math.max(0, centerCol - 4);
+        final int rightDecorCol = math.min(cols - 1, centerCol + 3);
+        final List<int> decorRows = [centerRow - 2, centerRow, centerRow + 2];
+        final List<Tetromino> decorTypes = [Tetromino.T, Tetromino.L, Tetromino.Z];
+
+        for (int i = 0; i < decorRows.length; i++) {
+          final int r = decorRows[i];
+          final Tetromino t = decorTypes[i % decorTypes.length];
+          if (r >= topMarginRows && r <= bottomMarginRows) {
+            if (leftDecorCol >= 0 && leftDecorCol < cols) grid[r][leftDecorCol] = t;
+            if (rightDecorCol >= 0 && rightDecorCol < cols) grid[r][rightDecorCol] = t;
+          }
+        }
         break;
       case GameKind.brick:
         hidePiece = true;
-        for (int c = 1; c < cols - 1; c += 2) {
-          grid[2][c] = Tetromino.Z;
-          grid[3][c] = Tetromino.Z;
+        // compact 2x2-ish brick cluster in the safe band
+        final List<Offset> brickCells = [
+          Offset(centerCol - 1.0, centerRow - 1.0),
+          Offset(centerCol.toDouble(), centerRow - 1.0),
+          Offset(centerCol - 1.0, centerRow.toDouble()),
+          Offset(centerCol.toDouble(), centerRow.toDouble()),
+        ];
+        for (final o in brickCells) {
+          final int r = o.dy.toInt();
+          final int c = o.dx.toInt();
+          if (r >= topMarginRows && r <= bottomMarginRows && c >= 0 && c < cols) grid[r][c] = Tetromino.Z;
         }
-        grid[rows - 2][4] = Tetromino.I;
-        grid[rows - 2][5] = Tetromino.I;
-        grid[rows - 2][6] = Tetromino.I;
+        // small platform under the cluster
+        if (centerRow + 1 <= bottomMarginRows) {
+          if (centerCol >= 1 && centerCol < cols - 1) {
+            grid[centerRow + 1][centerCol - 1] = Tetromino.I;
+            grid[centerRow + 1][centerCol] = Tetromino.I;
+          } else if (centerCol < cols) {
+            grid[centerRow + 1][centerCol] = Tetromino.I;
+          }
+        }
         break;
       case GameKind.shoot:
         hidePiece = true;
-        for (int c = 2; c < cols - 2; c += 3) {
-          grid[3][c] = Tetromino.T;
-          grid[5][c] = Tetromino.T;
+        // tight formation: two T rows and a single L below, inside safe band
+        for (int offset = -1; offset <= 1; offset += 2) {
+          final int c = centerCol + offset * 2;
+          if (centerRow - 1 >= topMarginRows && centerRow - 1 <= bottomMarginRows && c >= 0 && c < cols) {
+            grid[centerRow - 1][c] = Tetromino.T;
+          }
+          if (centerRow >= topMarginRows && centerRow <= bottomMarginRows && c >= 0 && c < cols) {
+            grid[centerRow][c] = Tetromino.T;
+          }
         }
-        grid[rows - 2][cols ~/ 2] = Tetromino.L;
+        if (centerRow + 1 <= bottomMarginRows) grid[centerRow + 1][centerCol] = Tetromino.L;
         break;
     }
 
-    return CustomPaint(
-      painter: GameGridPainter(grid, piece, hidePiece, false),
+    // Fill the whole area and draw on top; we let the parent Stack overlays (title/hints)
+    // remain positioned above the painter.
+    return SizedBox.expand(
+      child: CustomPaint(
+        painter: GameGridPainter(grid, piece, hidePiece, false),
+      ),
     );
   }
 }
 
+// ignore: unused_element
 class _MenuSidePanelGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

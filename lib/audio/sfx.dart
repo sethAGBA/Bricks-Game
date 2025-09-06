@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 
 /// Lightweight helper to play short, overlapping sound effects reliably.
@@ -5,20 +6,33 @@ import 'package:audioplayers/audioplayers.dart';
 class Sfx {
   static Future<void> play(String assetPath, {double volume = 1.0}) async {
     final player = AudioPlayer();
+    bool cleaned = false;
+    StreamSubscription<void>? sub;
+    Timer? fallback;
+
+    Future<void> cleanup() async {
+      if (cleaned) return;
+      cleaned = true;
+      try { await sub?.cancel(); } catch (_) {}
+      try { fallback?.cancel(); } catch (_) {}
+      try { await player.stop(); } catch (_) {}
+      try { await player.release(); } catch (_) {}
+      try { await player.dispose(); } catch (_) {}
+    }
     try {
       await player.setReleaseMode(ReleaseMode.stop);
       await player.setVolume(volume.clamp(0.0, 1.0));
-      // Use AssetSource with path relative to assets/sounds/
       await player.play(AssetSource(assetPath));
-      // Dispose when done to free resources (do not await)
-      player.onPlayerComplete.first.then((_) => player.dispose());
-      // Fallback delayed dispose safety net (in case completion isn't fired)
-      Future<void>.delayed(const Duration(seconds: 5)).then((_) {
-        try { player.dispose(); } catch (_) {}
+      // Dispose when done to free resources
+      sub = player.onPlayerComplete.listen((_) async {
+        await cleanup();
+      });
+      // Fallback delayed cleanup (if completion isn't fired)
+      fallback = Timer(const Duration(seconds: 6), () {
+        cleanup();
       });
     } catch (_) {
-      // On any error, ensure we release the player
-      try { await player.dispose(); } catch (_) {}
+      await cleanup();
     }
   }
 }

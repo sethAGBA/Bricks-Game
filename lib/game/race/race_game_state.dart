@@ -26,6 +26,8 @@ class RaceGameState with ChangeNotifier {
   bool _isDecelerating = false; // New flag
   bool _enemyAccelerating = false; // When true, enemies move faster
   bool _testModeNoRoadMove = false; // New flag for testing
+  bool _trailBlinkOn = true; // Blink flag for visual trails/centers
+  Timer? _trailBlinkTimer;
 
   late Car playerCar;
   late List<Car> otherCars;
@@ -59,6 +61,7 @@ class RaceGameState with ChangeNotifier {
   bool get isAccelerating => _isAccelerating; // New getter
   bool get isDecelerating => _isDecelerating; // New getter
   bool get enemyAccelerating => _enemyAccelerating;
+  bool get trailBlinkOn => _trailBlinkOn;
 
   RaceGameState() {
     loadHighScore();
@@ -103,6 +106,7 @@ class RaceGameState with ChangeNotifier {
     _startElapsedTimer();
   // Start background engine music if sound enabled
   _startEngineMusic();
+    _startTrailBlink();
     notifyListeners();
   }
 
@@ -138,13 +142,16 @@ class RaceGameState with ChangeNotifier {
       final int baseSpeed = _computeBaseSpeed();
       int interval = baseSpeed;
       if (forceAccelerated || _enemyAccelerating) {
-        // Make acceleration stronger at higher levels by decreasing the ratio
-        // linearly with level. Example mapping (level: ratio of base):
-        // 1 -> 0.50x, 5 -> 0.38x, 10 -> 0.23x.
+        // Acceleration effect scales with level and speedSetting.
+        // Lower ratio => faster ticks. Example (level,speed)->ratio approx:
+        // (1,1)=0.50, (5,5)=~0.33, (10,10)=~0.18
         final double baseRatio = 0.50;
-        final double perLevelDrop = 0.03; // stronger effect per level
-        final double rawRatio = baseRatio - perLevelDrop * (_level - 1);
-        final double ratio = rawRatio.clamp(0.15, 0.50);
+        final double perLevelDrop = 0.025; // 2.5% per level above 1
+        final double perSpeedDrop = 0.02;  // 2% per speed step above 1
+        final double rawRatio = baseRatio
+            - perLevelDrop * (_level - 1)
+            - perSpeedDrop * (_speedSetting - 1);
+        final double ratio = rawRatio.clamp(0.12, 0.50);
         final int accelerated = (baseSpeed * ratio).round();
         interval = accelerated.clamp(15, 1000);
       }
@@ -364,8 +371,8 @@ class RaceGameState with ChangeNotifier {
   }
 
   void _startCrashAnimation() {
-    const int animationFrames = 30; // Total frames for crash animation (Java's paint job duration)
-    const Duration frameDuration = Duration(milliseconds: 50); // Java's paint job frame duration
+    const int animationFrames = 12; // tighter, more expressive explosion
+    const Duration frameDuration = Duration(milliseconds: 60);
 
     Timer.periodic(frameDuration, (timer) {
       _crashAnimationFrame++;
@@ -592,9 +599,11 @@ class RaceGameState with ChangeNotifier {
     if (_playing) {
       _resetTimer();
       _startElapsedTimer();
+      _startTrailBlink();
     } else {
       _timer?.cancel();
       _stopElapsedTimer();
+      _stopTrailBlink();
     }
     notifyListeners();
   }
@@ -628,12 +637,29 @@ class RaceGameState with ChangeNotifier {
     _gameSecondsTimer?.cancel();
   }
 
+  void _startTrailBlink() {
+    _trailBlinkTimer?.cancel();
+    _trailBlinkTimer = Timer.periodic(const Duration(milliseconds: 220), (_) {
+      if (_playing && !_gameOver && !_isCrashing) {
+        _trailBlinkOn = !_trailBlinkOn;
+        notifyListeners();
+      }
+    });
+  }
+
+  void _stopTrailBlink() {
+    _trailBlinkTimer?.cancel();
+    _trailBlinkTimer = null;
+    _trailBlinkOn = true;
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
     _gameSecondsTimer?.cancel();
   _musicPlayer.dispose();
   _sfxPlayer.dispose();
+    _stopTrailBlink();
     super.dispose();
   }
 }

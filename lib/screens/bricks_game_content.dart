@@ -412,12 +412,7 @@ class _NextPiecePainter extends CustomPainter {
     const double outerStrokeWidth = GameGridPainter.outerStrokeWidth;
     const double innerSizeFactor = GameGridPainter.innerSizeFactor;
 
-    final Paint onPaint = Paint()..color = LcdColors.pixelOn;
     final Paint offPaint = Paint()..color = LcdColors.pixelOff;
-    final Paint borderPaintOn = Paint()
-      ..color = LcdColors.pixelOn
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = outerStrokeWidth;
     final Paint borderPaintOff = Paint()
       ..color = LcdColors.pixelOff
       ..style = PaintingStyle.stroke
@@ -430,9 +425,17 @@ class _NextPiecePainter extends CustomPainter {
           cellHeight - gapPx,
         );
 
-    void drawCell(int c, int r, bool on) {
+    void drawCell(int c, int r, {Color? color}) {
       final Rect outer = contentRect(c, r);
-      canvas.drawRect(outer, on ? borderPaintOn : borderPaintOff);
+      if (color == null) {
+        canvas.drawRect(outer, borderPaintOff);
+      } else {
+        final Paint borderPaintOn = Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = outerStrokeWidth;
+        canvas.drawRect(outer, borderPaintOn);
+      }
 
       final double innerW = outer.width * innerSizeFactor;
       final double innerH = outer.height * innerSizeFactor;
@@ -443,13 +446,19 @@ class _NextPiecePainter extends CustomPainter {
         innerW,
         innerH,
       );
-      canvas.drawRect(inner, on ? onPaint : offPaint);
+      if (color == null) {
+        canvas.drawRect(inner, offPaint);
+      } else {
+        final Color blended = Color.alphaBlend(LcdColors.background.withOpacity(0.20), color);
+        final Paint fillPaint = Paint()..color = blended;
+        canvas.drawRect(inner, fillPaint);
+      }
     }
 
     // Draw all OFF cells
     for (int r = 0; r < rows; r++) {
       for (int c = 0; c < cols; c++) {
-        drawCell(c, r, false);
+        drawCell(c, r, color: null);
       }
     }
 
@@ -457,7 +466,7 @@ class _NextPiecePainter extends CustomPainter {
     for (int r = 0; r < piece.shape.length && r < rows; r++) {
       for (int c = 0; c < piece.shape[r].length && c < cols; c++) {
         if (piece.shape[r][c] == 1) {
-          drawCell(c, r, true);
+          drawCell(c, r, color: TetrominoPalette.colorFor(piece.type));
         }
       }
     }

@@ -46,13 +46,13 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
 
   void _startFoodBlinking() {
     _foodBlinkTimer?.cancel();
-    // 100ms tick; 70% ON, 30% OFF per 1s cycle
-    _foodBlinkTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    // 150ms tick; ~66% ON, 34% OFF per 1.5s cycle
+    _foodBlinkTimer = Timer.periodic(const Duration(milliseconds: 150), (timer) {
       if (!mounted) return;
       setState(() {
         if (gameState.isPlaying && !gameState.isGameOver) {
-          _foodPulseTick = (_foodPulseTick + 1) % 10; // 0..9
-          _foodVisible = _foodPulseTick < 7; // 0..6 ON, 7..9 OFF
+          _foodPulseTick = (_foodPulseTick + 1) % 9; // 0..8
+          _foodVisible = _foodPulseTick < 6; // 0..5 ON, 6..8 OFF
         } else {
           // When paused or not playing, keep food visible
           _foodVisible = true;
@@ -198,12 +198,11 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                     buildStatText('LIFE'),
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        // Use width-based square cells (slightly larger for readability)
+                        // Match decorative LCD cell size roughly
                         final double baseCell = constraints.maxWidth / SnakeGameState.cols;
-                        final double cellSize = baseCell * 1.25; // scale up life cells
-                        final double height = cellSize;
-                        final double width = min(constraints.maxWidth, gameState.life * cellSize);
-                        return SizedBox(height: height, width: width, child: _buildLifeDisplay(gameState.life));
+                        final double iconHeight = (baseCell * 1.0).clamp(18.0, 38.0);
+                        final double width = constraints.maxWidth;
+                        return SizedBox(height: iconHeight, width: width, child: _buildLifeDisplay(gameState.life));
                       },
                     ),
                         SizedBox(height: 10),
@@ -271,60 +270,73 @@ class _LifeCellsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Render lives as a single 1-row grid with fixed cell size matching main grids
-    const int rows = 1;
-    final int cols = lifeCount.clamp(0, 10);
+    // Render exactly 4 LCD-style squares: ON for remaining lives, OFF otherwise
+    final int lives = lifeCount.clamp(0, 4);
+    if (lives == 0 && lifeCount <= 0) {
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = LcdColors.background);
+      return;
+    }
 
-    // Make cells square-ish based on height
-    final double cellHeight = size.height;
-    final double cellWidth = cellHeight; // square cells for consistency
-
-    // Colors and styles consistent with grids
     const double gapPx = 1.0;
     const double outerStrokeWidth = 1.0;
     const double innerSizeFactor = 0.6;
-
-    final Paint onPaint = Paint()..color = LcdColors.pixelOn;
     final Paint offPaint = Paint()..color = LcdColors.pixelOff;
-    final Paint borderPaintOn = Paint()
-      ..color = LcdColors.pixelOn
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = outerStrokeWidth;
-    final Paint borderPaintOff = Paint()
+    final Paint borderOff = Paint()
       ..color = LcdColors.pixelOff
       ..style = PaintingStyle.stroke
       ..strokeWidth = outerStrokeWidth;
 
-    // Background
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = LcdColors.background);
 
-    Rect contentRect(int c, int r) => Rect.fromLTWH(
-          c * cellWidth + gapPx / 2,
-          r * cellHeight + gapPx / 2,
-          cellWidth - gapPx,
-          cellHeight - gapPx,
-        );
+    final int slots = 4;
+    final double slotW = size.width / slots;
+    final double side = min(slotW, size.height) - gapPx; // square size per life indicator
 
-    void drawCell(int c, int r, bool on) {
-      final Rect outer = contentRect(c, r);
-      canvas.drawRect(outer, on ? borderPaintOn : borderPaintOff);
-      final double innerW = outer.width * innerSizeFactor;
-      final double innerH = outer.height * innerSizeFactor;
+    Rect squareRect(double x, double y) => Rect.fromLTWH(x + gapPx / 2, y + gapPx / 2, side, side);
+
+    void drawOffRect(Rect r) {
+      canvas.drawRect(r, borderOff);
+      final double innerW = r.width * innerSizeFactor;
+      final double innerH = r.height * innerSizeFactor;
       final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
       final Rect inner = Rect.fromLTWH(
-        outer.left + outer.width * innerOffset,
-        outer.top + outer.height * innerOffset,
+        r.left + r.width * innerOffset,
+        r.top + r.height * innerOffset,
         innerW,
         innerH,
       );
-      canvas.drawRect(inner, on ? onPaint : offPaint);
+      canvas.drawRect(inner, offPaint);
     }
 
-    // Compute how many cells fit in the available width
-    final int maxCols = size.width ~/ cellWidth;
-    final int toDraw = min(cols, maxCols);
-    for (int c = 0; c < toDraw; c++) {
-      drawCell(c, 0, c < lifeCount);
+    void drawOnRect(Rect r) {
+      final Paint borderOn = Paint()
+        ..color = LcdColors.pixelOn
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = outerStrokeWidth;
+      final Paint onPaint = Paint()..color = LcdColors.pixelOn;
+      canvas.drawRect(r, borderOn);
+      final double innerW = r.width * innerSizeFactor;
+      final double innerH = r.height * innerSizeFactor;
+      final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+      final Rect inner = Rect.fromLTWH(
+        r.left + r.width * innerOffset,
+        r.top + r.height * innerOffset,
+        innerW,
+        innerH,
+      );
+      canvas.drawRect(inner, onPaint);
+    }
+
+    for (int i = 0; i < slots; i++) {
+      final double ox = i * slotW + (slotW - side - gapPx) / 2;
+      final double oy = (size.height - side - gapPx) / 2;
+      final Rect r = squareRect(ox, oy);
+      // OFF background
+      drawOffRect(r);
+      // Turn ON if life remains
+      if (i < lives) {
+        drawOnRect(r);
+      }
     }
   }
 
