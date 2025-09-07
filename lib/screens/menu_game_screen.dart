@@ -13,6 +13,8 @@ import 'package:bricks/screens/snake_game_screen.dart';
 import 'package:bricks/screens/coming_soon_game_screen.dart';
 import 'package:bricks/game/frogger/frogger_game_state.dart';
 import 'package:bricks/screens/frogger_game_screen.dart';
+import 'package:bricks/game/flappy/flappy_game_state.dart';
+import 'package:bricks/screens/flappy_game_screen.dart';
 import 'package:bricks/style/app_style.dart';
 import 'package:bricks/game/game_grid_painter.dart';
 import 'package:bricks/game/tanks/tanks_game_state.dart';
@@ -28,7 +30,7 @@ class MenuGameScreen extends StatefulWidget {
   State<MenuGameScreen> createState() => _MenuGameScreenState();
 }
 
-enum GameKind { tetris, snake, racing, brick, shoot, tanks, frogger }
+enum GameKind { tetris, snake, racing, brick, shoot, tanks, frogger, flappy }
 
 class GameDef {
   final String title;
@@ -44,6 +46,7 @@ const List<GameDef> kGames = <GameDef>[
   GameDef('SHOOT', GameKind.shoot),
   GameDef('TANKS', GameKind.tanks),
   GameDef('FROGGER', GameKind.frogger),
+  GameDef('FLAPPY', GameKind.flappy),
 ];
 
 class _MenuGameScreenState extends State<MenuGameScreen> {
@@ -157,6 +160,21 @@ class _MenuGameScreenState extends State<MenuGameScreen> {
               return fs;
             },
             child: const FroggerGameScreen(),
+          ),
+        ),
+      );
+    } else if (def.kind == GameKind.flappy) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider(
+            create: (_) {
+              final fl = FlappyGameState();
+              fl.applyMenuSettings(level: _level, speed: _speed);
+              fl.loadHighScore();
+              return fl;
+            },
+            child: const FlappyGameScreen(),
           ),
         ),
       );
@@ -635,6 +653,22 @@ class _PreviewBoard extends StatelessWidget {
         // small frog/lily indicator centered in the safe band
         if (centerRow >= topMarginRows && centerRow <= bottomMarginRows && centerCol >= 0 && centerCol < cols) {
           grid[centerRow][centerCol] = Tetromino.L;
+        }
+        break;
+      case GameKind.flappy:
+        hidePiece = true;
+        // bird preview: single J block and two vertical pipe blocks left/right
+        if (centerRow >= topMarginRows && centerRow <= bottomMarginRows && centerCol >= 0 && centerCol < cols) {
+          grid[centerRow][centerCol] = Tetromino.J;
+        }
+        // pipes
+        final int leftCol = math.max(0, centerCol - 3);
+        final int rightCol = math.min(cols - 1, centerCol + 3);
+        for (int r = centerRow - 3; r <= centerRow + 3; r++) {
+          if (r >= topMarginRows && r <= bottomMarginRows) {
+            grid[r][leftCol] = Tetromino.T;
+            grid[r][rightCol] = Tetromino.T;
+          }
         }
         break;
     }

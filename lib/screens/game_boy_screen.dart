@@ -560,11 +560,11 @@ class GameBoyScreenState extends State<GameBoyScreen> with TickerProviderStateMi
     );
   }
 
-  // Widget pour les boutons d'action (DROP, ROTATE)
+  // Widget pour les boutons d'action (DROP, BREAK)
   Widget _buildActionButtons() {
     return Row(
       children: [
-        _buildActionButton('ROTATE', GameBoyScreen.btnRotate, widget.rotateButtonSize),
+        _buildActionButton('BREAK', GameBoyScreen.btnRotate, widget.rotateButtonSize),
         SizedBox(width: 15),
         _buildActionButton('DROP', GameBoyScreen.btnDrop, widget.dropButtonSize),
       ],
