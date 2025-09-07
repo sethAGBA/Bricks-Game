@@ -15,6 +15,8 @@ import 'package:bricks/game/frogger/frogger_game_state.dart';
 import 'package:bricks/screens/frogger_game_screen.dart';
 import 'package:bricks/game/flappy/flappy_game_state.dart';
 import 'package:bricks/screens/flappy_game_screen.dart';
+import 'package:bricks/game/pong/pong_game_state.dart';
+import 'package:bricks/screens/pong_game_screen.dart';
 import 'package:bricks/style/app_style.dart';
 import 'package:bricks/game/game_grid_painter.dart';
 import 'package:bricks/game/tanks/tanks_game_state.dart';
@@ -30,7 +32,7 @@ class MenuGameScreen extends StatefulWidget {
   State<MenuGameScreen> createState() => _MenuGameScreenState();
 }
 
-enum GameKind { tetris, snake, racing, brick, shoot, tanks, frogger, flappy }
+enum GameKind { tetris, snake, racing, brick, shoot, tanks, frogger, flappy, pong }
 
 class GameDef {
   final String title;
@@ -47,6 +49,7 @@ const List<GameDef> kGames = <GameDef>[
   GameDef('TANKS', GameKind.tanks),
   GameDef('FROGGER', GameKind.frogger),
   GameDef('FLAPPY', GameKind.flappy),
+  GameDef('PONG', GameKind.pong),
 ];
 
 class _MenuGameScreenState extends State<MenuGameScreen> {
@@ -175,6 +178,21 @@ class _MenuGameScreenState extends State<MenuGameScreen> {
               return fl;
             },
             child: const FlappyGameScreen(),
+          ),
+        ),
+      );
+    } else if (def.kind == GameKind.pong) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider(
+            create: (_) {
+              final pg = PongGameState();
+              pg.applyMenuSettings(level: _level, speed: _speed);
+              pg.loadHighScore();
+              return pg;
+            },
+            child: const PongGameScreen(),
           ),
         ),
       );
@@ -670,6 +688,16 @@ class _PreviewBoard extends StatelessWidget {
             grid[r][rightCol] = Tetromino.T;
           }
         }
+        break;
+      case GameKind.pong:
+        hidePiece = true;
+        // paddles and ball near the center band
+        for (int dy = -1; dy <= 1; dy++) {
+          final int r = (centerRow + dy).clamp(topMarginRows, bottomMarginRows);
+          grid[r][2] = Tetromino.J; // player paddle
+          grid[r][cols - 3] = Tetromino.Z; // AI paddle
+        }
+        grid[centerRow][centerCol] = Tetromino.O; // ball
         break;
     }
 
