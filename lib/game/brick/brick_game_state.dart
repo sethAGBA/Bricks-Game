@@ -107,7 +107,7 @@ class BrickGameState with ChangeNotifier {
     _score = 0;
     _life = 4;
     _elapsedSeconds = 0;
-    _level = 1; // always start at level 1 per request
+    _level = _initialLevel;
     _playing = true;
     _gameOver = false;
     _gameOverAnimTimer?.cancel();

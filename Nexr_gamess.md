@@ -17,3 +17,35 @@
    5. Minesweeper (Démineur) : Un jeu de puzzle logique. Le joueur doit découvrir des cases sans faire exploser de mines. C'est un excellent ajout pour varier les
       types de jeux et ne nécessite pas de mouvement constant.
 
+ Voici 6 idées sympas qui collent bien au style “LCD/brick” du projet, avec réutilisation possible et difficulté estimée.
+
+  - Frogger (traversée) : reprise de “Racing” côté circulation, mais en grille multi‑voies avec allers‑retours, troncs/rivières éventuels.
+      - Réutilise: renderer LCD + logique de lanes.
+      - Difficulté: moyenne.
+      - Difficulté: moyenne.
+  -
+  Pong (1P vs IA) : raquettes haut/bas, balle qui accélère, score en side panel.
+      - Réutilise: collisions balle/raquette déjà robustes dans Brick.
+      - Difficulté: facile.
+  -
+  Flappy (one‑button) : obstacles en colonnes, gravité simple, vitesse progressive, score en side panel.
+      - Réutilise: timer loop + painter existants.
+      - Difficulté: facile.
+  -
+  Asteroids (wrap-around) : vaisseau rotatif, tirs, rochers qui se subdivisent, inertie simplifiée.
+      - Réutilise: tir/collisions de Tanks/Shoot.
+      - Difficulté: moyenne+.
+  -
+  Pac‑like (labyrinthe) : pastilles, 4 “fantômes” avec IA simple (chase/scatter), bonus.
+      - Réutilise: grille Tetris/Bricks + painter.
+      - Difficulté: élevée.
+  -
+  Space Runner (endless) : couloir vertical, obstacles/bonus, vitesse level‑dépendante.
+      - Réutilise: boucle Racing + spawn pattern.
+      - Difficulté: facile–moyenne.
+
+
+       Tune layout: adjust number of water/road lanes or shift rows if you want more safe zones.
+  - Require exact goal alignment vs “snap within range” (currently exact column).
+  - Add obstacles on roads (trucks spanning multiple cells), bonus insects at goals, or a time bonus per frog delivered.
+  - Add hop SFX on each move (can be subtle to avoid noise).

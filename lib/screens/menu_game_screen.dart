@@ -11,6 +11,8 @@ import 'package:bricks/screens/shoot_game_screen.dart';
 import 'package:bricks/screens/tetris_game_screen.dart';
 import 'package:bricks/screens/snake_game_screen.dart';
 import 'package:bricks/screens/coming_soon_game_screen.dart';
+import 'package:bricks/game/frogger/frogger_game_state.dart';
+import 'package:bricks/screens/frogger_game_screen.dart';
 import 'package:bricks/style/app_style.dart';
 import 'package:bricks/game/game_grid_painter.dart';
 import 'package:bricks/game/tanks/tanks_game_state.dart';
@@ -26,7 +28,7 @@ class MenuGameScreen extends StatefulWidget {
   State<MenuGameScreen> createState() => _MenuGameScreenState();
 }
 
-enum GameKind { tetris, snake, racing, brick, shoot, tanks }
+enum GameKind { tetris, snake, racing, brick, shoot, tanks, frogger }
 
 class GameDef {
   final String title;
@@ -41,6 +43,7 @@ const List<GameDef> kGames = <GameDef>[
   GameDef('BRICK', GameKind.brick),
   GameDef('SHOOT', GameKind.shoot),
   GameDef('TANKS', GameKind.tanks),
+  GameDef('FROGGER', GameKind.frogger),
 ];
 
 class _MenuGameScreenState extends State<MenuGameScreen> {
@@ -139,6 +142,21 @@ class _MenuGameScreenState extends State<MenuGameScreen> {
               return bs;
             },
             child: const BrickGameScreen(),
+          ),
+        ),
+      );
+    } else if (def.kind == GameKind.frogger) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider(
+            create: (_) {
+              final fs = FroggerGameState();
+              fs.applyMenuSettings(level: _level, speed: _speed);
+              fs.loadHighScore();
+              return fs;
+            },
+            child: const FroggerGameScreen(),
           ),
         ),
       );
@@ -610,6 +628,13 @@ class _PreviewBoard extends StatelessWidget {
         if (centerRow - 3 >= topMarginRows) {
           drawTankMask(centerCol - 4, centerRow - 3, [0x6, 0x3, 0x6], Tetromino.Z);
           drawTankMask(centerCol + 2, centerRow - 3, [0x3, 0x6, 0x3], Tetromino.Z);
+        }
+        break;
+      case GameKind.frogger:
+        hidePiece = true;
+        // small frog/lily indicator centered in the safe band
+        if (centerRow >= topMarginRows && centerRow <= bottomMarginRows && centerCol >= 0 && centerCol < cols) {
+          grid[centerRow][centerCol] = Tetromino.L;
         }
         break;
     }

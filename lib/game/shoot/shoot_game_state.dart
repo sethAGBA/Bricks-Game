@@ -97,7 +97,7 @@ class ShootGameState with ChangeNotifier {
     _explosions.clear();
     _powerUps.clear();
     _pierceActive = false; _pierceUntilTick = 0;
-    _level = 1; // Start always at level 1
+    _level = _initialLevel;
     _spawnArmy();
     _resetLoop();
     _startSeconds();

@@ -101,7 +101,7 @@ class TanksGameState with ChangeNotifier {
     _score = 0;
     _life = 4;
     _elapsedSeconds = 0;
-    _level = 1; // start at 1
+    _level = _initialLevel;
     _playing = true;
     _gameOver = false;
     _gameOverAnimTimer?.cancel();
