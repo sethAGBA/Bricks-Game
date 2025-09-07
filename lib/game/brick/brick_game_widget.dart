@@ -284,7 +284,13 @@ class _BrickStats extends StatelessWidget {
     if (gs.pierceActive) addChip('PIER ${gs.pierceRemainingSeconds}s');
     if (gs.multiActive) addChip('MULT');
     if (chips.isEmpty) return const SizedBox(height: 0);
-    return Row(mainAxisAlignment: MainAxisAlignment.center, children: chips);
+    // Use Wrap to avoid horizontal overflow when multiple chips are shown
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 2,
+      runSpacing: 2,
+      children: chips,
+    );
   }
 }
 

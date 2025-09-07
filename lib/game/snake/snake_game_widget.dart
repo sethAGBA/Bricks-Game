@@ -130,44 +130,49 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
             children: [
               Expanded(
                 flex: 2,
-                child: CustomPaint(
-                  painter: _SnakeGamePainter(
-                    snake: gameState.snake,
-                    food: gameState.food,
-                    obstacles: gameState.obstacles,
-                    blinkHead: _blinkHead && gameState.isPlaying,
-                    // Use independent food blinking: false => visible, true => hide
-                    blinkFood: !_foodVisible,
-                    gameOverFrame: gameState.gameOverAnimFrame,
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: LcdColors.pixelOn, width: 1),
                   ),
-                  child: gameState.isGameOver && _showGameOverText
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text(
-                                'GAME OVER',
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 24,
-                                  fontFamily: 'Digital7',
+                  child: CustomPaint(
+                    painter: _SnakeGamePainter(
+                      snake: gameState.snake,
+                      food: gameState.food,
+                      obstacles: gameState.obstacles,
+                      blinkHead: _blinkHead && gameState.isPlaying,
+                      // Independent food blinking: false => visible, true => hide
+                      blinkFood: !_foodVisible,
+                      gameOverFrame: gameState.gameOverAnimFrame,
+                    ),
+                    child: gameState.isGameOver && _showGameOverText
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'GAME OVER',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 24,
+                                    fontFamily: 'Digital7',
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : gameState.isStartingGame
-                          ? Center(
-                              child: Text(
-                                'START',
-                                style: TextStyle(
-                                  color: gameState.startBlinkColor,
-                                  fontSize: 24,
-                                  fontFamily: 'Digital7',
+                              ],
+                            ),
+                          )
+                        : gameState.isStartingGame
+                            ? Center(
+                                child: Text(
+                                  'START',
+                                  style: TextStyle(
+                                    color: gameState.startBlinkColor,
+                                    fontSize: 24,
+                                    fontFamily: 'Digital7',
+                                  ),
                                 ),
-                              ),
-                            )
-                          : Container(width: double.infinity, height: double.infinity),
+                              )
+                            : Container(width: double.infinity, height: double.infinity),
+                  ),
                 ),
               ),
               Container(
@@ -177,8 +182,12 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
               ),
               Expanded(
                 flex: 1,
-                child: Stack(
-                  children: [
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: LcdColors.pixelOn, width: 1),
+                  ),
+                  child: Stack(
+                    children: [
                     Positioned.fill(
                       child: CustomPaint(
                         painter: _SnakeSidePanelGridPainter(),
@@ -201,7 +210,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                       builder: (context, constraints) {
                         // Match decorative LCD cell size roughly
                         final double baseCell = constraints.maxWidth / SnakeGameState.cols;
-                        final double iconHeight = (baseCell * 1.0).clamp(18.0, 38.0);
+                        final double iconHeight = (baseCell * 1.0).clamp(10.0, 28.0);
                         final double width = constraints.maxWidth;
                         return SizedBox(height: iconHeight, width: width, child: _buildLifeDisplay(gameState.life));
                       },
@@ -213,6 +222,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                         Padding(
                           padding: EdgeInsets.only(bottom: 1),
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
                                 gameState.soundOn ? Icons.volume_up : Icons.volume_off,
@@ -250,7 +260,7 @@ class _SnakeGameWidgetState extends State<SnakeGameWidget> with TickerProviderSt
                   ],
                 ),
               ),
-            ],
+                  )        ],
           ),
         ),
       ),

@@ -155,19 +155,23 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
             // Panneau d'informations
             Expanded(
               flex: 1,
-              child: Selector<GameState, Map<String, dynamic>>(
-                selector: (_, gameState) => {
-                  'score': gameState.score,
-                  'lines': gameState.lines,
-                  'level': gameState.level,
-                  'highScore': gameState.highScore,
-                  'nextPiece': gameState.nextPiece,
-                  'elapsedSeconds': gameState.elapsedSeconds,
-                  'soundOn': gameState.soundOn,
-                  'volume': gameState.volume,
-                  'playing': gameState.playing,
-                },
-                builder: (context, data, child) {
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: LcdColors.pixelOn, width: 1),
+                ),
+                child: Selector<GameState, Map<String, dynamic>>(
+                  selector: (_, gameState) => {
+                    'score': gameState.score,
+                    'lines': gameState.lines,
+                    'level': gameState.level,
+                    'highScore': gameState.highScore,
+                    'nextPiece': gameState.nextPiece,
+                    'elapsedSeconds': gameState.elapsedSeconds,
+                    'soundOn': gameState.soundOn,
+                    'volume': gameState.volume,
+                    'playing': gameState.playing,
+                  },
+                  builder: (context, data, child) {
                   final score = data['score'];
                   final lines = data['lines'];
                   final level = data['level'];
@@ -205,8 +209,7 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
                 },
               ),
             ),
-            // ...existing code...
-          ],
+         ) ],
         ),
       ),
     );
@@ -258,7 +261,8 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
 
   Widget _buildInfoPanel(int score, int lines, int level, int highScore, Piece nextPiece, int elapsedSeconds, bool soundOn, int volume, bool playing) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(height: 2),
         buildStatText('Points'),
@@ -307,6 +311,7 @@ class BricksGameContentState extends State<BricksGameContent> with TickerProvide
         Padding(
           padding: EdgeInsets.only(bottom: 1),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 soundOn ? Icons.volume_up : Icons.volume_off,

@@ -17,7 +17,15 @@ class TanksGameWidget extends StatelessWidget {
         child: Row(children: [
           Expanded(flex: 2, child: Container(decoration: BoxDecoration(border: Border.all(color: LcdColors.pixelOn, width: 1)), child: const _TanksBoard())),
           Container(width: 2, color: LcdColors.pixelOn, margin: const EdgeInsets.symmetric(horizontal: 4)),
-          const Expanded(flex: 1, child: _TanksStats()),
+          Expanded(
+            flex: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: LcdColors.pixelOn, width: 1),
+              ),
+              child: const _TanksStats(),
+            ),
+          ),
         ]),
       ),
     );
@@ -98,6 +106,34 @@ class _TanksPainter extends CustomPainter {
     for (final e in gs.enemies) {
       drawTank(e.pos, e.dir, const Color(0xFFE53935));
     }
+    // Boss (7x5), draw after enemies
+    if (gs.boss != null) {
+      void drawBoss(Point<int> topLeft, Dir dir, Color color) {
+        List<int> rows;
+        switch (dir) {
+          case Dir.up:
+            rows = [0x08, 0x1C, 0x7F, 0x55, 0x7F];
+            break;
+          case Dir.right:
+            rows = [0x3F, 0x11, 0x7F, 0x11, 0x3F];
+            break;
+          case Dir.down:
+            rows = [0x7F, 0x55, 0x7F, 0x1C, 0x08];
+            break;
+          case Dir.left:
+            rows = [0x7C, 0x44, 0x7F, 0x44, 0x7C];
+            break;
+        }
+        for (int ry = 0; ry < 5; ry++) {
+          for (int rx = 0; rx < 7; rx++) {
+            if (((rows[ry] >> (6 - rx)) & 1) == 1) {
+              drawOn(topLeft.x + rx, topLeft.y + ry, color);
+            }
+          }
+        }
+      }
+      drawBoss(gs.boss!.pos, gs.boss!.dir, const Color(0xFFFF5722));
+    }
     // Bullets
     for (final b in gs.bullets) { drawOn(b.pos.x, b.pos.y, const Color(0xFFF44336)); }
     for (final b in gs.enemyBullets) { drawOn(b.pos.x, b.pos.y, const Color(0xFFFFA726)); }
@@ -162,13 +198,31 @@ class _TanksStats extends StatelessWidget {
           const SizedBox(height: 8),
           _effectsRow(gs),
           const Spacer(),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(gs.soundOn ? Icons.volume_up : Icons.volume_off, size: 12, color: LcdColors.pixelOn),
-            const SizedBox(width: 6),
-            Row(children: List.generate(3, (i) => Container(width: 4, height: 8, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: i < gs.volume ? LcdColors.pixelOn : LcdColors.pixelOn.withAlpha((255 * 0.3).round()), borderRadius: BorderRadius.circular(1))))),
-            const SizedBox(width: 10),
-            GestureDetector(onTap: gs.togglePlaying, child: Icon(gs.playing ? Icons.pause : Icons.play_arrow, size: 12, color: LcdColors.pixelOn)),
-          ]),
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              Icon(gs.soundOn ? Icons.volume_up : Icons.volume_off, size: 12, color: LcdColors.pixelOn),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(3, (i) => Container(
+                      width: 4,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        color: i < gs.volume ? LcdColors.pixelOn : LcdColors.pixelOn.withAlpha((255 * 0.3).round()),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    )),
+              ),
+              GestureDetector(
+                onTap: gs.togglePlaying,
+                child: Icon(gs.playing ? Icons.pause : Icons.play_arrow, size: 12, color: LcdColors.pixelOn),
+              ),
+            ],
+          ),
         ])
       ]);
     });
@@ -196,8 +250,9 @@ class _TanksStats extends StatelessWidget {
     }
     if (gs.shieldActive) addChip('SHLD ${gs.shieldRemainingSeconds}s');
     if (gs.rapidActive) addChip('RAPD ${gs.rapidRemainingSeconds}s');
+    if (gs.bossActive) addChip('BOSS');
     if (chips.isEmpty) return const SizedBox(height: 0);
-    return Row(mainAxisAlignment: MainAxisAlignment.center, children: chips);
+    return Wrap(alignment: WrapAlignment.center, spacing: 2, runSpacing: 2, children: chips);
   }
 }
 

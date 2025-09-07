@@ -94,7 +94,12 @@ class _RaceGameWidgetState extends State<RaceGameWidget> {
                 ),
                 Expanded(
                   flex: 1,
-                  child: _buildInfoPanel(gameState),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: LcdColors.pixelOn, width: 1),
+                    ),
+                    child: _buildInfoPanel(gameState),
+                  ),
                 ),
               ],
             ),
@@ -105,76 +110,132 @@ class _RaceGameWidgetState extends State<RaceGameWidget> {
   }
 
   Widget _buildInfoPanel(RaceGameState gameState) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Stack(
       children: [
-        buildStatText('Score'),
-        buildStatNumber(gameState.score.toString().padLeft(5, '0')),
-        SizedBox(height: 10),
-        buildStatText('Level'),
-        buildStatNumber(gameState.level.toString()),
-        SizedBox(height: 10),
-        buildStatText('HIGH SCORE'),
-        buildStatNumber(gameState.highScore.toString().padLeft(5, '0')),
-        SizedBox(height: 10),
-        buildStatText('LIFE'),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            // Match decorative LCD cell size roughly
-            final double baseCell = constraints.maxWidth / RaceGameState.cols;
-            final double iconHeight = (baseCell * 1.0).clamp(18.0, 38.0);
-            final double width = constraints.maxWidth;
-            return SizedBox(height: iconHeight, width: width, child: _buildLifeDisplay(gameState.life));
-          },
-        ),
-        SizedBox(height: 10),
-        buildStatText('TIME'),
-        buildStatNumber('${gameState.elapsedSeconds ~/ 60}:${(gameState.elapsedSeconds % 60).toString().padLeft(2, '0')}'),
-        Spacer(),
-        Padding(
-          padding: EdgeInsets.only(bottom: 1),
-          child: Row(
-            children: [
-              Icon(
-                gameState.soundOn ? Icons.volume_up : Icons.volume_off,
-                size: 12,
-                color: LcdColors.pixelOn,
-              ),
-              SizedBox(width: 2),
-              Row(
-                children: List.generate(3, (i) => Container(
-                  width: 4,
-                  height: 8,
-                  margin: EdgeInsets.symmetric(horizontal: 1),
-                  decoration: BoxDecoration(
-                    color: i < gameState.volume ? LcdColors.pixelOn : LcdColors.pixelOn.withAlpha((255 * 0.3).round()),
-                    borderRadius: BorderRadius.circular(1),
-                  ),
-                )),
-              ),
-              SizedBox(width: 8),
-              GestureDetector(
-                onTap: () {
-                  gameState.togglePlaying();
-                },
-                child: Icon(
-                  gameState.playing ? Icons.play_arrow : Icons.pause,
-                  size: 12,
-                  color: LcdColors.pixelOn,
-                ),
-              ),
-            ],
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _RaceSidePanelGridPainter(),
           ),
+        ),
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            buildStatText('Score'),
+            buildStatNumber(gameState.score.toString().padLeft(5, '0')),
+            SizedBox(height: 10),
+            buildStatText('Level'),
+            buildStatNumber(gameState.level.toString()),
+            SizedBox(height: 10),
+            buildStatText('HIGH SCORE'),
+            buildStatNumber(gameState.highScore.toString().padLeft(5, '0')),
+            SizedBox(height: 10),
+            buildStatText('LIFE'),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final double baseCell = constraints.maxWidth / RaceGameState.cols;
+                final double iconHeight = (baseCell * 1.0).clamp(10.0, 28.0);
+                final double width = constraints.maxWidth;
+                return SizedBox(height: iconHeight, width: width, child: _buildLifeDisplay(gameState.life));
+              },
+            ),
+            SizedBox(height: 10),
+            buildStatText('TIME'),
+            buildStatNumber('${gameState.elapsedSeconds ~/ 60}:${(gameState.elapsedSeconds % 60).toString().padLeft(2, '0')}'),
+            Spacer(),
+            Padding(
+              padding: EdgeInsets.only(bottom: 1),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    gameState.soundOn ? Icons.volume_up : Icons.volume_off,
+                    size: 12,
+                    color: LcdColors.pixelOn,
+                  ),
+                  SizedBox(width: 2),
+                  Row(
+                    children: List.generate(3, (i) => Container(
+                      width: 4,
+                      height: 8,
+                      margin: EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        color: i < gameState.volume ? LcdColors.pixelOn : LcdColors.pixelOn.withAlpha((255 * 0.3).round()),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    )),
+                  ),
+                  SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      gameState.togglePlaying();
+                    },
+                    child: Icon(
+                      gameState.playing ? Icons.play_arrow : Icons.pause,
+                      size: 12,
+                      color: LcdColors.pixelOn,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
+
+// Moved to top-level scope (outside State class)
 
   Widget _buildLifeDisplay(int life) {
     return CustomPaint(
       painter: _LifeCellsPainter(lifeCount: life),
     );
   }
+}
+
+class _RaceSidePanelGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const int rows = RaceGameState.rows;
+    final int cols = (RaceGameState.cols / 2).ceil();
+    final double cellWidth = size.width / cols;
+    final double cellHeight = size.height / rows;
+    final Paint bg = Paint()..color = LcdColors.background;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bg);
+    const double gapPx = 1.0;
+    const double outerStrokeWidth = 1.0;
+    const double innerSizeFactor = 0.6;
+    final Paint offPaint = Paint()..color = LcdColors.pixelOff;
+    final Paint borderPaintOff = Paint()
+      ..color = LcdColors.pixelOff
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outerStrokeWidth;
+    Rect contentRect(int c, int r) => Rect.fromLTWH(
+      c * cellWidth + gapPx / 2,
+      r * cellHeight + gapPx / 2,
+      cellWidth - gapPx,
+      cellHeight - gapPx,
+    );
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final Rect outer = contentRect(c, r);
+        canvas.drawRect(outer, borderPaintOff);
+        final double innerW = outer.width * innerSizeFactor;
+        final double innerH = outer.height * innerSizeFactor;
+        final double innerOffset = (1.0 - innerSizeFactor) / 2.0;
+        final Rect inner = Rect.fromLTWH(
+          outer.left + outer.width * innerOffset,
+          outer.top + outer.height * innerOffset,
+          innerW,
+          innerH,
+        );
+        canvas.drawRect(inner, offPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _LifeCellsPainter extends CustomPainter {

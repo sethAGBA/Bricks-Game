@@ -7,6 +7,7 @@ import 'package:bricks/audio/sfx.dart';
 class TanksGameState with ChangeNotifier {
   static const int rows = 20;
   static const int cols = 10;
+  static const int maxLevel = 12;
 
   // Game state
   int _score = 0;
@@ -36,7 +37,12 @@ class TanksGameState with ChangeNotifier {
   int _tick = 0;
   int _tickMs = 320;
   int _lastFireTick = -9999;
-  int _killsThisLevel = 0;
+  int _killsThisLevel = 0; // still tracked for stats if needed
+  int _remainingEnemies = 0; // enemies left to spawn this level
+  Boss? _boss; // active boss when present
+  int _bossHDir = 1; // boss horizontal direction: 1=right, -1=left
+  int _nextSpawnTick = 0;
+  int _lastKillTick = 0; // tick of last enemy kill (for spawn pressure)
 
   // Audio
   bool _soundOn = true;
@@ -69,9 +75,11 @@ class TanksGameState with ChangeNotifier {
   int get shieldRemainingSeconds => _shieldActive ? ((_shieldUntilTick - _tick) * _tickMs / 1000).ceil() : 0;
   int get rapidRemainingSeconds => _rapidActive ? ((_rapidUntilTick - _tick) * _tickMs / 1000).ceil() : 0;
   List<_Impact> get impacts => List.unmodifiable(_impacts);
+  Boss? get boss => _boss;
+  bool get bossActive => _boss != null;
 
   void applyMenuSettings({required int level, required int speed}) {
-    _initialLevel = level.clamp(1, 15);
+    _initialLevel = level.clamp(1, maxLevel);
     _level = _initialLevel;
     _speedSetting = speed.clamp(1, 10);
     notifyListeners();
@@ -98,6 +106,7 @@ class TanksGameState with ChangeNotifier {
     _gameOver = false;
     _gameOverAnimTimer?.cancel();
     _gameOverAnimFrame = 0;
+    // Wave start: player appears at the middle, facing up
     _player = Tank(Point<int>(cols ~/ 2 - 1, rows ~/ 2 - 1), Dir.up);
     _enemies.clear();
     _bullets.clear();
@@ -107,11 +116,26 @@ class TanksGameState with ChangeNotifier {
     _shieldActive = false; _shieldUntilTick = 0;
     _rapidActive = false; _rapidUntilTick = 0;
     _tick = 0;
+    _lastKillTick = 0;
+    _nextSpawnTick = 0;
     _spawnWalls();
-    _spawnEnemies(initial: true);
+    _startLevel();
     _resetLoop();
     _startSeconds();
     notifyListeners();
+  }
+
+  void _startLevel() {
+    if (_level > maxLevel) _level = maxLevel;
+    _enemies.clear();
+    _bullets.clear();
+    _enemyBullets.clear();
+    _impacts.clear();
+    _boss = null;
+    _remainingEnemies = _enemiesForLevel();
+    _killsThisLevel = 0;
+    _lastKillTick = _tick;
+    _spawnEnemies(initial: true);
   }
 
   void _spawnWalls() {
@@ -143,24 +167,26 @@ class TanksGameState with ChangeNotifier {
 
   void _spawnEnemies({bool initial = false}) {
     final rnd = Random();
-    int count = min(6, 2 + (_level ~/ 2));
-    // At game start, ensure we spawn 4 enemies (one per side)
-    if (initial && count < 4) count = 4;
+    final int maxConcurrent = _maxConcurrentEnemies();
+    if (_remainingEnemies <= 0 || bossActive) { _nextSpawnTick = _tick + _computeSpawnInterval(); return; }
+    int target = initial ? min(4, maxConcurrent) : 1;
     int placed = 0;
     int attempts = 0;
-
-    // First, try to place one enemy on each side
-    final List<int> sides = [0, 1, 2, 3]..shuffle(rnd); // 0=top,1=bottom,2=left,3=right
-    for (final s in sides) {
-      if (placed >= count) break;
-      if (_trySpawnOnSide(s, rnd)) placed++;
-    }
-
-    // Fill remaining
-    while (placed < count && attempts < 200) {
+    while (placed < target && attempts < 200 && _enemies.length < maxConcurrent) {
       attempts++;
-      if (_trySpawnOnSide(rnd.nextInt(4), rnd)) placed++;
+      // Try one per side first for initial placement
+      if (initial) {
+        final List<int> sides = [0, 1, 2, 3]..shuffle(rnd);
+        for (final s in sides) {
+          if (placed >= target || _enemies.length >= maxConcurrent || _remainingEnemies <= 0) break;
+          if (_trySpawnOnSide(s, rnd)) { placed++; _remainingEnemies--; }
+        }
+        if (placed >= target || _enemies.length >= maxConcurrent || _remainingEnemies <= 0) break;
+      }
+      if (_remainingEnemies > 0 && _trySpawnOnSide(rnd.nextInt(4), rnd)) { placed++; _remainingEnemies--; }
     }
+    // schedule next spawn opportunity
+    _nextSpawnTick = _tick + _computeSpawnInterval();
   }
 
   bool _trySpawnOnSide(int side, Random rnd) {
@@ -300,14 +326,60 @@ class TanksGameState with ChangeNotifier {
       }
     }
 
+    // Boss movement and firing
+    if (bossActive) {
+      // Horizontal patrol only; speed depends on level
+      final int every = _bossMoveEvery();
+      if (_tick % every == 0) {
+        final Dir horiz = _bossHDir < 0 ? Dir.left : Dir.right;
+        // Desired next X
+        int nextX = _step(_boss!.pos, horiz).x;
+        // Clamp to board so the 7x5 boss stays inside horizontally
+        final int minX = 0;
+        final int maxX = cols - 7;
+        if (nextX < minX || nextX > maxX) {
+          // reverse at edges
+          _bossHDir = -_bossHDir;
+          final Dir rev = _bossHDir < 0 ? Dir.left : Dir.right;
+          nextX = _step(_boss!.pos, rev).x;
+          nextX = nextX.clamp(minX, maxX);
+        } else {
+          nextX = nextX.clamp(minX, maxX);
+        }
+        final Point<int> np = Point<int>(nextX, 1);
+        // With clamped X and fixed Y, ensure no collision
+        if (_canPlaceBossAt(np, Dir.down)) {
+          _boss!.pos = np;
+        }
+      }
+      // Fire straight down from top boss
+      if (_tick % 3 == 0) {
+        final Point<int> start = _bossBarrelStart(_boss!.pos, Dir.down);
+        if (_inBounds(start)) {
+          _enemyBullets.add(_Bullet(start, Dir.down));
+          if (_soundOn) Sfx.play('sounds/gameboy-pluck-41265.mp3', volume: _volume / 3);
+        }
+      }
+    }
+
     // Move bullets
     _advanceBullets();
     _advanceEnemyBullets();
     _movePowerUps();
 
-    // Maintain enemies if all cleared (no level up here; level progresses by kills)
-    if (_enemies.isEmpty) {
-      _spawnEnemies();
+    // Spawning/wave progression
+    if (!bossActive) {
+      final int maxConcurrent = _effectiveMaxConcurrentEnemies();
+      // Ensure at least one enemy: if empty and still enemies remaining, spawn immediately
+      if (_remainingEnemies > 0 && _enemies.isEmpty) {
+        _spawnEnemies();
+      } else if (_remainingEnemies > 0 && _tick >= _nextSpawnTick && _enemies.length < maxConcurrent) {
+        _spawnEnemies();
+      }
+      // If wave cleared, spawn boss
+      if (_remainingEnemies <= 0 && _enemies.isEmpty) {
+        _spawnBoss();
+      }
     }
 
     if (_score > _highScore) {
@@ -325,12 +397,20 @@ class TanksGameState with ChangeNotifier {
 
   void _movePlayer(Dir d) {
     if (!_playing || _gameOver) return;
+    if (bossActive) {
+      // Limit to horizontal movement; keep cannon up
+      if (d != Dir.left && d != Dir.right) return;
+      _player.dir = Dir.up;
+      final np = _step(_player.pos, d);
+      if (_canPlaceTankAt(np, Dir.up, ignore: _player)) {
+        _player.pos = np;
+        notifyListeners();
+      }
+      return;
+    }
     _player.dir = d;
     final np = _step(_player.pos, d);
-    if (_canPlaceTankAt(np, d, ignore: _player)) {
-      _player.pos = np;
-      notifyListeners();
-    }
+    if (_canPlaceTankAt(np, d, ignore: _player)) { _player.pos = np; notifyListeners(); }
   }
 
   void fire() {
@@ -373,6 +453,27 @@ class TanksGameState with ChangeNotifier {
         remove.add(b);
         if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
         continue;
+      }
+      // hit boss? Only shots that enter the cannon count; body hits are ignored (absorbed)
+      if (_boss != null) {
+        final Point<int> cannon = _bossCannonCell(_boss!);
+        if (nb == cannon) {
+          _boss!.hp -= 1;
+          _impacts.add(_Impact(nb, 0, 4));
+          remove.add(b);
+          if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
+          if (_boss!.hp <= 0) {
+            _score += 100; // boss defeated bonus
+            _boss = null;
+            _onBossDefeated();
+          }
+          continue;
+        } else {
+          // If bullet hits boss body, absorb without damage
+          bool bodyHit = false;
+          for (final cell in _bossCells(_boss!)) { if (cell == nb) { bodyHit = true; break; } }
+          if (bodyHit) { remove.add(b); continue; }
+        }
       }
       add.add(_Bullet(nb, b.dir)); remove.add(b);
     }
@@ -425,9 +526,11 @@ class TanksGameState with ChangeNotifier {
 
   // Enemy AI helpers: scale movement and firing with level
   int _enemyMoveEvery() {
-    // Move every 2 ticks at low levels, then every tick at level >= 4
-    final int every = 2 - (_level ~/ 4);
-    return every < 1 ? 1 : every;
+    // Progressive speed: start slow at low levels and ramp up.
+    // Map level 1..maxLevel to period ~6..2 (ticks per step).
+    final int L = _level.clamp(1, maxLevel);
+    final double period = 6 - 4 * ((L - 1) / (maxLevel - 1));
+    return period.round().clamp(2, 6);
   }
 
   double _enemyLosFireProb() {
@@ -480,7 +583,12 @@ class TanksGameState with ChangeNotifier {
       // Impact ring on player hit (center of tank)
       final hitCenter = Point<int>(_player.pos.x + 1, _player.pos.y + 1);
       _impacts.add(_Impact(hitCenter, 0, 6));
-      _player = Tank(Point<int>(cols ~/ 2 - 1, rows ~/ 2 - 1), Dir.up);
+      // Respawn depends on phase: boss -> bottom center; wave -> middle center
+      if (bossActive) {
+        _player = Tank(Point<int>(cols ~/ 2 - 1, rows - 4), Dir.up);
+      } else {
+        _player = Tank(Point<int>(cols ~/ 2 - 1, rows ~/ 2 - 1), Dir.up);
+      }
       _bullets.clear(); _enemyBullets.clear();
       if (_soundOn) Sfx.play('sounds/8bit-ringtone-free-to-use-loopable-44702.mp3', volume: _volume / 3);
     }
@@ -586,6 +694,10 @@ class TanksGameState with ChangeNotifier {
         if (ignore != null && identical(e, ignore)) continue;
         for (final ec in _tankCells(e)) { if (ec == cell) return false; }
       }
+      // collide with boss (5x5)
+      if (_boss != null) {
+        for (final bc in _bossCells(_boss!)) { if (bc == cell) return false; }
+      }
     }
     return true;
   }
@@ -652,34 +764,182 @@ class TanksGameState with ChangeNotifier {
     if (_soundOn) Sfx.play('sounds/cartoon_16-74046.mp3', volume: _volume / 3);
   }
 
-  // Kill/level progression and immediate respawn logic
+  // Kill/level progression during wave
   void _onEnemyKilled(Point<int> at) {
     _killsThisLevel++;
-    _spawnEnemyAtCornerNear(at);
-    if (_killsThisLevel >= 20) {
+    _lastKillTick = _tick;
+    // Visual impact already added by caller; next enemy spawns on schedule if any remaining
+  }
+
+  void _onBossDefeated() {
+    // Advance level until maxLevel; at maxLevel, end the game (victory)
+    if (_level >= maxLevel) {
+      _endGame();
+    } else {
       _level++;
-      _killsThisLevel = 0;
+      _startLevel();
       _resetLoop();
     }
   }
 
-  void _spawnEnemyAtCornerNear(Point<int> at) {
-    // Choose the nearest corner to the kill position
-    final bool left = at.x < cols / 2;
-    final bool top = at.y < rows / 2;
-    final int cx = left ? 0 : cols - 3;
-    final int cy = top ? 0 : rows - 3;
-    final Point<int> corner = Point<int>(cx, cy);
-    final Dir dir = top ? Dir.down : Dir.up;
-    if (_canPlaceTankAt(corner, dir)) {
-      _enemies.add(Tank(corner, dir));
-      return;
-    }
-    // Fallback: try along the corresponding side
-    final int side = top ? 0 : 1; // 0=top, 1=bottom
-    final rnd = Random();
-    _trySpawnOnSide(side, rnd);
+  int _computeSpawnInterval() {
+    // Base interval decreases as level and speed increase
+    final int base = (38 - 2 * _level - (_speedSetting ~/ 2)).clamp(10, 40);
+    return base;
   }
+
+  int _maxConcurrentEnemies() {
+    // Start with 4 (classic simultaneous enemies), increases to 6
+    final int maxC = 4 + (_level ~/ 3);
+    return maxC.clamp(4, 6);
+  }
+
+  int _effectiveMaxConcurrentEnemies() {
+    final int base = _maxConcurrentEnemies();
+    return _spawnPressureActive() ? 6 : base;
+  }
+
+  bool _spawnPressureActive() {
+    // If no kills for a while, push more enemies up to 6
+    final int threshold = _noKillThresholdTicks();
+    return (_tick - _lastKillTick) > threshold;
+  }
+
+  int _noKillThresholdTicks() {
+    // Shorter threshold at higher levels; base ~180 ticks down to ~80
+    final int L = _level.clamp(1, maxLevel);
+    final int t = 180 - (L - 1) * 10;
+    return t.clamp(80, 180);
+  }
+
+  int _enemiesForLevel() {
+    // Total enemies per wave grows with level, capped for pacing
+    final int base = 6 + (_level * 2);
+    return base.clamp(6, 24);
+  }
+
+  void _spawnBoss() {
+    // Boss phase: only player and boss — clear walls, enemies, powerups, enemy bullets
+    _walls.clear();
+    _enemies.clear();
+    _powerUps.clear();
+    _enemyBullets.clear();
+    // Ensure player bottom center
+    _player = Tank(Point<int>(cols ~/ 2 - 1, rows - 3), Dir.up);
+
+    // Boss is 7x5; place at row 1 (one line below top) moving horizontally (dir fixed down for cannon)
+    final int width = 7;
+    final int y = 1; // one row below top
+    final int startX = ((cols - width) / 2).floor().clamp(0, cols - width);
+    final Point<int> start = Point<int>(startX, y);
+    if (_canPlaceBossAt(start, Dir.down)) {
+      _boss = Boss(start, Dir.down, _bossHpForLevel()); _bossHDir = 1; return;
+    }
+    for (int x = 0; x <= cols - width; x++) {
+      final p = Point<int>(x, y);
+      if (_canPlaceBossAt(p, Dir.down)) { _boss = Boss(p, Dir.down, _bossHpForLevel()); _bossHDir = 1; return; }
+    }
+    _boss = Boss(Point<int>(0, y), Dir.down, _bossHpForLevel()); _bossHDir = 1;
+  }
+
+  int _bossHpForLevel() => (6 + _level).clamp(6, 24);
+
+  int _bossMoveEvery() {
+    // Progressive boss speed: start slower and ramp toward fast.
+    // Map level 1..maxLevel to period ~7..2.
+    final int L = _level.clamp(1, maxLevel);
+    final double period = 7 - 5 * ((L - 1) / (maxLevel - 1));
+    return period.round().clamp(2, 7);
+  }
+  
+  // Boss geometry (5x5) and helpers (instance methods to access state)
+  Iterable<Point<int>> _bossCells(Boss b) => _bossCellsAt(b.pos, b.dir);
+  
+  Iterable<Point<int>> _bossCellsAt(Point<int> topLeft, Dir dir) sync* {
+    // 7x5 boss shape masks (width=7, height=5)
+    List<int> rowsMask;
+    switch (dir) {
+      case Dir.up:
+        rowsMask = [
+          0x08, // 0001000 barrel tip
+          0x1C, // 0011100
+          0x7F, // 1111111
+          0x55, // 1010101
+          0x7F, // 1111111
+        ];
+        break;
+      case Dir.right:
+        rowsMask = [
+          0x3F, // 0111111
+          0x11, // 0010001
+          0x7F, // 1111111
+          0x11, // 0010001
+          0x3F, // 0111111
+        ];
+        break;
+      case Dir.down:
+        rowsMask = [
+          0x7F, // 1111111
+          0x55, // 1010101
+          0x7F, // 1111111
+          0x1C, // 0011100
+          0x08, // 0001000 barrel tip
+        ];
+        break;
+      case Dir.left:
+        rowsMask = [
+          0x7C, // 1111100
+          0x44, // 1000100
+          0x7F, // 1111111
+          0x44, // 1000100
+          0x7C, // 1111100
+        ];
+        break;
+    }
+    for (int ry = 0; ry < 5; ry++) {
+      for (int rx = 0; rx < 7; rx++) {
+        if (((rowsMask[ry] >> (6 - rx)) & 1) == 1) {
+          yield Point<int>(topLeft.x + rx, topLeft.y + ry);
+        }
+      }
+    }
+  }
+
+  bool _canPlaceBossAt(Point<int> topLeft, Dir dir) {
+    for (final cell in _bossCellsAt(topLeft, dir)) {
+      if (!_inBounds(cell) || _walls.contains(cell)) return false;
+      for (final pc in _tankCells(_player)) { if (pc == cell) return false; }
+      for (final e in _enemies) { for (final ec in _tankCells(e)) { if (ec == cell) return false; } }
+    }
+    return true;
+  }
+
+  // Centers used for LOS aiming
+  Point<int> playerCenter() => Point<int>(_player.pos.x + 1, _player.pos.y + 1);
+  Point<int> bossCenter() => Point<int>(_boss!.pos.x + 3, _boss!.pos.y + 2);
+
+  // Boss barrel start (5x5 geometry)
+  Point<int> _bossBarrelStart(Point<int> p, Dir d) {
+    switch (d) {
+      case Dir.up: return Point<int>(p.x + 3, p.y - 1);
+      case Dir.down: return Point<int>(p.x + 3, p.y + 5);
+      case Dir.left: return Point<int>(p.x - 1, p.y + 2);
+      case Dir.right: return Point<int>(p.x + 7, p.y + 2);
+    }
+  }
+
+  // Temporary shim to reuse direction helper for boss
+  Tank _bossAsTank() => Tank(_boss!.pos, _boss!.dir);
+
+  // Boss vulnerable point: cannon intake (center of boss mask)
+  Point<int> _bossCannonCell(Boss b) => Point<int>(b.pos.x + 3, b.pos.y + 2);
+}
+
+class Boss {
+  Point<int> pos;
+  Dir dir;
+  int hp;
+  Boss(this.pos, this.dir, this.hp);
 }
 
 class _Bullet {

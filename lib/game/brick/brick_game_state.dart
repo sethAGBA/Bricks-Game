@@ -152,8 +152,9 @@ class BrickGameState with ChangeNotifier {
   void _resetLoop() {
     _loopTimer?.cancel();
     if (!_playing || _gameOver) return;
-    // base interval: faster with speed setting and level
-    final int base = (350 - _speedSetting * 18 - _level * 10).clamp(60, 1200);
+    // base interval: faster ball at level 1, scaling with speed and level
+    final int base0 = (_level == 1) ? 260 : 300; // boost level 1 speed
+    final int base = (base0 - _speedSetting * 24 - _level * 14).clamp(45, 1000);
     _tickMs = base;
     _loopTimer = Timer.periodic(Duration(milliseconds: base), (_) => _tick());
   }
@@ -249,43 +250,68 @@ class BrickGameState with ChangeNotifier {
       return;
     }
 
-    // Move ball
+    // Move ball with axis-aware collision resolution to reduce "slipping"
     int nx = _ball.x + _dx;
     int ny = _ball.y + _dy;
 
-    // Wall collisions
-    if (nx < 0) {
-      nx = 0; _dx = 1; _playBounce();
-    } else if (nx >= cols) {
-      nx = cols - 1; _dx = -1; _playBounce();
+    // Handle walls per-axis first
+    if (nx < 0) { _dx = 1; nx = _ball.x + _dx; _playBounce(); }
+    else if (nx >= cols) { _dx = -1; nx = _ball.x + _dx; _playBounce(); }
+    if (ny < 0) { _dy = 1; ny = _ball.y + _dy; _playBounce(); }
+
+    // Check bricks along horizontal and vertical axes separately
+    bool bounced = false;
+    final Point<int> hStep = Point<int>(_ball.x + _dx, _ball.y);
+    final Point<int> vStep = Point<int>(_ball.x, _ball.y + _dy);
+    if (_bricks.contains(hStep)) {
+      _bricks.remove(hStep);
+      _score += 10;
+      if (!_pierceBall) { _dx = -_dx; nx = _ball.x + _dx; bounced = true; _playBounce(); }
+      if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
+      _maybeSpawnPowerUp(hStep);
     }
-    if (ny < 0) {
-      ny = 0; _dy = 1; _playBounce();
+    if (_bricks.contains(vStep)) {
+      _bricks.remove(vStep);
+      _score += 10;
+      if (!_pierceBall) { _dy = -_dy; ny = _ball.y + _dy; bounced = true; _playBounce(); }
+      if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
+      _maybeSpawnPowerUp(vStep);
     }
+
+    // Recompute target after axis reflections
+    nx = _ball.x + _dx;
+    ny = _ball.y + _dy;
 
     // Paddle collision (paddle spans center +/- paddleHalf at row rows-2)
     final int py = rows - 2;
-    if (ny == py && (nx >= _paddleX - _paddleHalf && nx <= _paddleX + _paddleHalf) && _dy > 0) {
-      // reflect up
+    if (_dy > 0 && ny == py && (nx >= _paddleX - _paddleHalf && nx <= _paddleX + _paddleHalf)) {
       _dy = -1;
-      // adjust dx based on where it hit the paddle
       if (nx < _paddleX) _dx = -1; else if (nx > _paddleX) _dx = 1;
-      ny = py - 1;
+      ny = py - 1; // place just above paddle
+      bounced = true;
       _playBounce();
     }
 
-    // Brick collision
+    // Diagonal brick at target (corner hit)
     final hit = Point<int>(nx, ny);
     if (_bricks.contains(hit)) {
       _bricks.remove(hit);
       _score += 10;
       if (!_pierceBall) {
-        _dy = -_dy; // reflect unless pierce
+        // On corner, flip vertical by default
+        _dy = -_dy;
         ny = _ball.y + _dy;
+        bounced = true;
+        _playBounce();
       }
       if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
       _maybeSpawnPowerUp(hit);
     }
+
+    // Final clamp against walls after bounces
+    if (nx < 0) { nx = 0; _dx = 1; }
+    else if (nx >= cols) { nx = cols - 1; _dx = -1; }
+    if (ny < 0) { ny = 0; _dy = 1; }
 
     // Update ball position
     _ball = Point<int>(nx, ny);
@@ -305,15 +331,35 @@ class BrickGameState with ChangeNotifier {
     // Move power-ups and check pickup
     _movePowerUps();
 
-    // Move second ball if present
+    // Move second ball if present (apply same axis-aware logic)
     if (_ball2 != null) {
       int nx2 = _ball2!.x + _dx2;
       int ny2 = _ball2!.y + _dy2;
-      if (nx2 < 0) { nx2 = 0; _dx2 = 1; _playBounce(); }
-      else if (nx2 >= cols) { nx2 = cols - 1; _dx2 = -1; _playBounce(); }
-      if (ny2 < 0) { ny2 = 0; _dy2 = 1; _playBounce(); }
+      if (nx2 < 0) { _dx2 = 1; nx2 = _ball2!.x + _dx2; _playBounce(); }
+      else if (nx2 >= cols) { _dx2 = -1; nx2 = _ball2!.x + _dx2; _playBounce(); }
+      if (ny2 < 0) { _dy2 = 1; ny2 = _ball2!.y + _dy2; _playBounce(); }
+
+      final Point<int> h2 = Point<int>(_ball2!.x + _dx2, _ball2!.y);
+      final Point<int> v2 = Point<int>(_ball2!.x, _ball2!.y + _dy2);
+      if (_bricks.contains(h2)) {
+        _bricks.remove(h2);
+        _score += 10;
+        if (!_pierceBall) { _dx2 = -_dx2; nx2 = _ball2!.x + _dx2; _playBounce(); }
+        if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
+        _maybeSpawnPowerUp(h2);
+      }
+      if (_bricks.contains(v2)) {
+        _bricks.remove(v2);
+        _score += 10;
+        if (!_pierceBall) { _dy2 = -_dy2; ny2 = _ball2!.y + _dy2; _playBounce(); }
+        if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
+        _maybeSpawnPowerUp(v2);
+      }
+
+      nx2 = _ball2!.x + _dx2;
+      ny2 = _ball2!.y + _dy2;
       final int py2 = rows - 2;
-      if (ny2 == py2 && (nx2 >= _paddleX - _paddleHalf && nx2 <= _paddleX + _paddleHalf) && _dy2 > 0) {
+      if (_dy2 > 0 && ny2 == py2 && (nx2 >= _paddleX - _paddleHalf && nx2 <= _paddleX + _paddleHalf)) {
         _dy2 = -1;
         if (nx2 < _paddleX) _dx2 = -1; else if (nx2 > _paddleX) _dx2 = 1;
         ny2 = py2 - 1;
@@ -323,13 +369,14 @@ class BrickGameState with ChangeNotifier {
       if (_bricks.contains(hit2)) {
         _bricks.remove(hit2);
         _score += 10;
-        if (!_pierceBall) {
-          _dy2 = -_dy2;
-          ny2 = _ball2!.y + _dy2;
-        }
+        if (!_pierceBall) { _dy2 = -_dy2; ny2 = _ball2!.y + _dy2; _playBounce(); }
         if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
         _maybeSpawnPowerUp(hit2);
       }
+      if (nx2 < 0) { nx2 = 0; _dx2 = 1; }
+      else if (nx2 >= cols) { nx2 = cols - 1; _dx2 = -1; }
+      if (ny2 < 0) { ny2 = 0; _dy2 = 1; }
+
       _ball2 = Point<int>(nx2, ny2);
       if (_ufo != null && _ball2!.x == _ufo!.x && _ball2!.y == _ufo!.y) {
         _score += 50; _ufo = null; _dy2 = -_dy2; if (_soundOn) Sfx.play('sounds/cartoon_16-74046.mp3', volume: _volume / 3);

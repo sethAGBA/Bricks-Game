@@ -34,7 +34,12 @@ class ShootGameWidget extends StatelessWidget {
             Container(width: 2, color: LcdColors.pixelOn, margin: const EdgeInsets.symmetric(horizontal: 4)),
             Expanded(
               flex: 1,
-              child: const _ShootStats(),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: LcdColors.pixelOn, width: 1),
+                ),
+                child: const _ShootStats(),
+              ),
             ),
           ],
         ),
@@ -132,6 +137,10 @@ class _ShootPainter extends CustomPainter {
     // Draw player shots: red
     for (final s in gs.shots) {
       drawOn(s.x, s.y, const Color(0xFFF44336));
+    }
+    // Draw falling power-ups: green
+    for (final p in gs.powerUps) {
+      drawOn(p.pos.x, p.pos.y, const Color(0xFF4CAF50));
     }
     // Draw enemy shots: orange
     for (final s in gs.enemyShots) {
@@ -236,6 +245,9 @@ class _ShootStats extends StatelessWidget {
               buildStatText('Level'),
               buildStatNumber(gs.level.toString()),
               const SizedBox(height: 10),
+              buildStatText('POWER'),
+              _powerIndicator(gs),
+              const SizedBox(height: 10),
               buildStatText('HIGH SCORE'),
               buildStatNumber(gs.highScore.toString().padLeft(5, '0')),
               const SizedBox(height: 10),
@@ -291,6 +303,16 @@ class _ShootStats extends StatelessWidget {
       );
     });
   }
+}
+
+Widget _powerIndicator(ShootGameState gs) {
+  if (!gs.pierceActive) {
+    return buildStatNumber('--');
+  }
+  final ticks = gs.pierceRemainingTicks;
+  // Convert rough ticks to seconds estimate based on default loop pacing
+  final secs = (ticks * 0.3).ceil();
+  return buildStatNumber('PIERCE ${secs}s');
 }
 
 class _LifeSquare extends CustomPainter {

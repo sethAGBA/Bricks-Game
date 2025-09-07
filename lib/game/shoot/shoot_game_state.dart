@@ -28,6 +28,12 @@ class ShootGameState with ChangeNotifier {
   int _armyDir = 1; // 1:right, -1:left
   int _tickCount = 0;
   final List<ShootExplosion> _explosions = <ShootExplosion>[];
+  // Power-ups
+  final List<ShootPowerUp> _powerUps = <ShootPowerUp>[];
+  bool _pierceActive = false;
+  int _pierceUntilTick = 0;
+  // Descent pacing: controls how often the army moves down
+  int _descentTick = 0;
 
   // Timers
   Timer? _loopTimer;
@@ -55,6 +61,9 @@ class ShootGameState with ChangeNotifier {
   Set<Point<int>> get shots => _shots;
   Set<Point<int>> get enemyShots => _enemyShots;
   List<ShootExplosion> get explosions => List.unmodifiable(_explosions);
+  List<ShootPowerUp> get powerUps => List.unmodifiable(_powerUps);
+  bool get pierceActive => _pierceActive;
+  int get pierceRemainingTicks => _pierceActive ? (_pierceUntilTick - _tickCount).clamp(0, 9999) : 0;
 
   void applyMenuSettings({required int level, required int speed}) {
     _initialLevel = level.clamp(1, 15);
@@ -86,6 +95,8 @@ class ShootGameState with ChangeNotifier {
     _shots.clear();
     _enemyShots.clear();
     _explosions.clear();
+    _powerUps.clear();
+    _pierceActive = false; _pierceUntilTick = 0;
     _level = 1; // Start always at level 1
     _spawnArmy();
     _resetLoop();
@@ -95,6 +106,7 @@ class ShootGameState with ChangeNotifier {
 
   void _spawnArmy() {
     _army.clear();
+    _descentTick = 0;
     // Generate 3 rows of aliens with spacing; rows 2..4, columns 1..8 step 2
     for (int r = 2; r <= 4; r++) {
       for (int c = 1; c < cols - 1; c += 2) {
@@ -107,7 +119,8 @@ class ShootGameState with ChangeNotifier {
   void _resetLoop() {
     _loopTimer?.cancel();
     if (!_playing || _gameOver) return;
-    final int base = (300 - _speedSetting * 18 - _level * 8).clamp(60, 1000);
+    // Keep game loop speed based on speed setting only; descent speed scales with level separately
+    final int base = (300 - _speedSetting * 18).clamp(80, 1000);
     _loopTimer = Timer.periodic(Duration(milliseconds: base), (_) => _tick());
   }
 
@@ -173,6 +186,11 @@ class ShootGameState with ChangeNotifier {
     if (_gameOver || !_playing) return;
     _tickCount++;
 
+    // Timed effects expiry
+    if (_pierceActive && _tickCount >= _pierceUntilTick) {
+      _pierceActive = false;
+    }
+
     // 1) Move shots up
     final List<Point<int>> toRemoveShots = [];
     final List<Point<int>> movedShots = [];
@@ -188,17 +206,18 @@ class ShootGameState with ChangeNotifier {
     for (final s in toRemoveShots) { _shots.remove(s); }
     _shots.addAll(movedShots);
 
-    // 2) Shots vs army collisions
+    // 2) Shots vs army collisions (pierce keeps the shot alive)
     final Set<Point<int>> deadAliens = {};
     final Set<Point<int>> consumedShots = {};
     for (final s in _shots) {
       for (final a in _army) {
         if (s.x == a.x && s.y == a.y) {
           deadAliens.add(a);
-          consumedShots.add(s);
+          if (!_pierceActive) consumedShots.add(s);
           _score += 10;
           if (_soundOn) Sfx.play('sounds/bit_bomber1-89534.mp3', volume: _volume / 3);
           _explosions.add(ShootExplosion(Point<int>(a.x, a.y), 0));
+          _maybeSpawnPowerUp(a);
           break;
         }
       }
@@ -206,15 +225,21 @@ class ShootGameState with ChangeNotifier {
     _army.removeAll(deadAliens);
     _shots.removeAll(consumedShots);
 
-    // 3) Move army down and spawn new enemies on top row (Java-like)
-    final Set<Point<int>> moved = {};
-    for (final a in _army) { moved.add(Point<int>(a.x, a.y + 1)); }
-    _army
-      ..clear()
-      ..addAll(moved);
-    final Random rng = Random();
-    for (int x = 0; x < cols; x++) {
-      if (rng.nextBool()) { _army.add(Point<int>(x, 0)); }
+    // 3) Conditionally move army down based on level-scaled interval,
+    //    and spawn new enemies only when the army descends
+    _descentTick++;
+    final int descentInterval = _computeDescentInterval();
+    if (_descentTick >= descentInterval) {
+      _descentTick = 0;
+      final Set<Point<int>> moved = {};
+      for (final a in _army) { moved.add(Point<int>(a.x, a.y + 1)); }
+      _army
+        ..clear()
+        ..addAll(moved);
+      final Random rng = Random();
+      for (int x = 0; x < cols; x++) {
+        if (rng.nextBool()) { _army.add(Point<int>(x, 0)); }
+      }
     }
 
     // 4) Check lose conditions: army reached player's row
@@ -228,7 +253,10 @@ class ShootGameState with ChangeNotifier {
     final int targetLevel = (_score ~/ 200) + 1;
     if (targetLevel > _level) { _level = targetLevel; _resetLoop(); }
 
-    // 9) Advance explosions frames and cull
+    // 6) Move power-ups and handle pickups
+    _movePowerUps();
+
+    // 7) Advance explosions frames and cull
     for (final e in _explosions) {
       e.frame += 1;
     }
@@ -245,6 +273,40 @@ class ShootGameState with ChangeNotifier {
 
   void _maybeEnemyFire() {}
 
+  void _maybeSpawnPowerUp(Point<int> at) {
+    // 20% chance to drop a pierce power-up at alien's position
+    final rng = Random();
+    if (rng.nextDouble() < 0.20) {
+      _powerUps.add(ShootPowerUp(Point<int>(at.x, at.y), ShootPowerUpKind.pierce));
+    }
+  }
+
+  void _movePowerUps() {
+    if (_powerUps.isEmpty) return;
+    final removed = <ShootPowerUp>[];
+    final int pickupRow = rows - 2;
+    for (final p in _powerUps) {
+      final int ny = p.pos.y + 1;
+      if (ny >= rows) { removed.add(p); continue; }
+      p.pos = Point<int>(p.pos.x, ny);
+      if (ny == pickupRow && p.pos.x == _gunX) {
+        _applyPowerUp(p.kind);
+        removed.add(p);
+      }
+    }
+    _powerUps.removeWhere(removed.contains);
+  }
+
+  void _applyPowerUp(ShootPowerUpKind kind) {
+    switch (kind) {
+      case ShootPowerUpKind.pierce:
+        _pierceActive = true;
+        _pierceUntilTick = _tickCount + 200; // limited duration
+        if (_soundOn) Sfx.play('sounds/cartoon_16-74046.mp3', volume: _volume / 3);
+        break;
+    }
+  }
+
   void _onLifeLost({bool resetArmy = false}) {
     _life--;
     if (_life <= 0) {
@@ -257,6 +319,8 @@ class ShootGameState with ChangeNotifier {
     _gunX = cols ~/ 2;
     _shots.clear();
     _enemyShots.clear();
+    _powerUps.clear();
+    _pierceActive = false; _pierceUntilTick = 0;
     if (resetArmy) {
       _spawnArmy();
     }
@@ -291,6 +355,8 @@ class ShootGameState with ChangeNotifier {
     _loopTimer?.cancel();
     _secondsTimer?.cancel();
     Sfx.stopAll();
+    _powerUps.clear();
+    _pierceActive = false; _pierceUntilTick = 0;
     notifyListeners();
   }
 
@@ -301,10 +367,26 @@ class ShootGameState with ChangeNotifier {
     _gameOverAnimTimer?.cancel();
     super.dispose();
   }
+
+  // Descent interval decreases with level, making enemies descend faster at higher levels
+  // Level 1 -> every 6 ticks, Level 6+ -> every tick
+  int _computeDescentInterval() {
+    final int l = _level.clamp(1, 15);
+    final int interval = 7 - l; // 6 at level 1, 1 at level 6+
+    return interval.clamp(1, 6);
+  }
 }
 
 class ShootExplosion {
   final Point<int> pos;
   int frame;
   ShootExplosion(this.pos, this.frame);
+}
+
+enum ShootPowerUpKind { pierce }
+
+class ShootPowerUp {
+  Point<int> pos;
+  final ShootPowerUpKind kind;
+  ShootPowerUp(this.pos, this.kind);
 }
